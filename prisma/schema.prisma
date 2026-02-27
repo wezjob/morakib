@@ -1,0 +1,293 @@
+// ============================================
+// MORAKIB - Database Schema
+// SOC Analyst Assistant Platform
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  ANALYST_JUNIOR
+  ANALYST_SENIOR
+  LEAD
+  ADMIN
+}
+
+enum AlertSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum AlertStatus {
+  NEW
+  ASSIGNED
+  INVESTIGATING
+  RESOLVED
+  ESCALATED
+  FALSE_POSITIVE
+}
+
+enum AlertSource {
+  SURICATA
+  ZEEK
+  FILEBEAT
+  ELASTIC
+  CUSTOM
+}
+
+enum InvestigationConclusion {
+  TRUE_POSITIVE
+  FALSE_POSITIVE
+  NEEDS_ESCALATION
+  INCONCLUSIVE
+}
+
+enum SOPStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskType {
+  INVESTIGATE_ALERT
+  REVIEW_SOP
+  TRAINING
+  OTHER
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model User {
+  id           String    @id @default(cuid())
+  keycloakId   String?   @unique @map("keycloak_id")
+  email        String    @unique
+  name         String?
+  role         UserRole  @default(ANALYST_JUNIOR)
+  avatarUrl    String?   @map("avatar_url")
+  teamId       String?   @map("team_id")
+  team         Team?     @relation(fields: [teamId], references: [id])
+  
+  // Relations
+  assignedAlerts  Alert[]         @relation("AssignedAlerts")
+  investigations  Investigation[]
+  createdSOPs     SOP[]           @relation("CreatedSOPs")
+  tasks           Task[]
+  metrics         AnalystMetric[]
+  badges          UserBadge[]
+  
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  
+  @@map("users")
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  
+  members     User[]
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@map("teams")
+}
+
+model Alert {
+  id              String        @id @default(cuid())
+  elasticsearchId String?       @unique @map("elasticsearch_id")
+  title           String
+  description     String?
+  severity        AlertSeverity @default(MEDIUM)
+  status          AlertStatus   @default(NEW)
+  source          AlertSource   @default(SURICATA)
+  
+  // Alert details
+  sourceIp        String?       @map("source_ip")
+  destIp          String?       @map("dest_ip")
+  sourcePort      Int?          @map("source_port")
+  destPort        Int?          @map("dest_port")
+  protocol        String?
+  ruleName        String?       @map("rule_name")
+  ruleId          String?       @map("rule_id")
+  
+  // Raw data
+  rawLog          Json?         @map("raw_log")
+  enrichmentData  Json?         @map("enrichment_data")
+  
+  // Assignment
+  assignedToId    String?       @map("assigned_to_id")
+  assignedTo      User?         @relation("AssignedAlerts", fields: [assignedToId], references: [id])
+  assignedAt      DateTime?     @map("assigned_at")
+  
+  // Timestamps
+  detectedAt      DateTime      @default(now()) @map("detected_at")
+  resolvedAt      DateTime?     @map("resolved_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  
+  // Relations
+  investigations  Investigation[]
+  tasks           Task[]
+  
+  @@index([status])
+  @@index([severity])
+  @@index([assignedToId])
+  @@index([detectedAt])
+  @@map("alerts")
+}
+
+model Investigation {
+  id                String                   @id @default(cuid())
+  alertId           String                   @map("alert_id")
+  alert             Alert                    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  analystId         String                   @map("analyst_id")
+  analyst           User                     @relation(fields: [analystId], references: [id])
+  
+  // SOP used
+  sopId             String?                  @map("sop_id")
+  sop               SOP?                     @relation(fields: [sopId], references: [id])
+  
+  // Investigation details
+  checklistResults  Json?                    @map("checklist_results")
+  findings          String?
+  conclusion        InvestigationConclusion?
+  actionsTaken      Json?                    @map("actions_taken")
+  timeSpentMinutes  Int?                     @map("time_spent_minutes")
+  
+  // IRIS integration
+  irisIncidentId    String?                  @map("iris_incident_id")
+  
+  // Timestamps
+  startedAt         DateTime                 @default(now()) @map("started_at")
+  completedAt       DateTime?                @map("completed_at")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+  
+  @@index([alertId])
+  @@index([analystId])
+  @@map("investigations")
+}
+
+model SOP {
+  id              String    @id @default(cuid())
+  title           String
+  slug            String    @unique
+  category        String
+  alertTypes      String[]  @map("alert_types")
+  
+  // Content
+  contentMarkdown String    @map("content_markdown") @db.Text
+  checklist       Json?
+  examples        Json?
+  
+  // Metadata
+  version         Int       @default(1)
+  status          SOPStatus @default(DRAFT)
+  
+  // Author
+  createdById     String    @map("created_by_id")
+  createdBy       User      @relation("CreatedSOPs", fields: [createdById], references: [id])
+  
+  // Relations
+  investigations  Investigation[]
+  
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  
+  @@index([category])
+  @@index([status])
+  @@map("sops")
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  analystId   String     @map("analyst_id")
+  analyst     User       @relation(fields: [analystId], references: [id])
+  alertId     String?    @map("alert_id")
+  alert       Alert?     @relation(fields: [alertId], references: [id])
+  
+  type        TaskType   @default(OTHER)
+  title       String
+  description String?
+  priority    Int        @default(0)
+  status      TaskStatus @default(PENDING)
+  dueDate     DateTime?  @map("due_date")
+  
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  completedAt DateTime?  @map("completed_at")
+  
+  @@index([analystId])
+  @@index([status])
+  @@map("tasks")
+}
+
+model AnalystMetric {
+  id                    String   @id @default(cuid())
+  analystId             String   @map("analyst_id")
+  analyst               User     @relation(fields: [analystId], references: [id])
+  date                  DateTime @db.Date
+  
+  alertsProcessed       Int      @default(0) @map("alerts_processed")
+  avgResolutionTimeMin  Float?   @map("avg_resolution_time_min")
+  truePositives         Int      @default(0) @map("true_positives")
+  falsePositives        Int      @default(0) @map("false_positives")
+  escalations           Int      @default(0)
+  
+  createdAt             DateTime @default(now()) @map("created_at")
+  
+  @@unique([analystId, date])
+  @@index([date])
+  @@map("analyst_metrics")
+}
+
+model Badge {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  description String
+  icon        String
+  points      Int         @default(0)
+  condition   Json        // JSON describing the condition to earn this badge
+  
+  users       UserBadge[]
+  
+  createdAt   DateTime    @default(now()) @map("created_at")
+  
+  @@map("badges")
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  badgeId   String   @map("badge_id")
+  badge     Badge    @relation(fields: [badgeId], references: [id])
+  earnedAt  DateTime @default(now()) @map("earned_at")
+  
+  @@unique([userId, badgeId])
+  @@map("user_badges")
+}
