@@ -80,16 +80,22 @@ enum TaskType {
 // ============================================
 
 model User {
-  id           String    @id @default(cuid())
-  keycloakId   String?   @unique @map("keycloak_id")
-  email        String    @unique
-  name         String?
-  role         UserRole  @default(ANALYST_JUNIOR)
-  avatarUrl    String?   @map("avatar_url")
-  teamId       String?   @map("team_id")
-  team         Team?     @relation(fields: [teamId], references: [id])
+  id            String    @id @default(cuid())
+  keycloakId    String?   @unique @map("keycloak_id")
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  name          String?
+  image         String?
+  role          UserRole  @default(ANALYST_JUNIOR)
+  avatarUrl     String?   @map("avatar_url")
+  teamId        String?   @map("team_id")
+  team          Team?     @relation(fields: [teamId], references: [id])
   
-  // Relations
+  // NextAuth relations
+  accounts      Account[]
+  sessions      Session[]
+  
+  // App relations
   assignedAlerts  Alert[]         @relation("AssignedAlerts")
   investigations  Investigation[]
   createdSOPs     SOP[]           @relation("CreatedSOPs")
@@ -101,6 +107,46 @@ model User {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   
   @@map("users")
+}
+
+// NextAuth required models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
 }
 
 model Team {
