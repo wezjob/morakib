@@ -10,12 +10,15 @@ interface SOPCardProps {
     title: string;
     slug: string;
     category: string;
-    code: string;
-    description: string;
+    contentMarkdown?: string;
     alertTypes: string[];
-    version: number;
-    updatedAt: Date;
-    author: string;
+    version?: number;
+    updatedAt: string | Date;
+    createdBy?: {
+      id: string;
+      name: string;
+      email: string;
+    };
   };
 }
 
@@ -28,7 +31,19 @@ const categoryColors: Record<string, string> = {
   Cloud: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",
 };
 
+// Extract description from markdown content
+function getDescription(contentMarkdown?: string): string {
+  if (!contentMarkdown) return "Aucune description disponible.";
+  // Remove markdown headers and get first paragraph
+  const lines = contentMarkdown.split('\n').filter(line => !line.startsWith('#') && line.trim());
+  return lines[0]?.slice(0, 150) || "Aucune description disponible.";
+}
+
 export function SOPCard({ sop }: SOPCardProps) {
+  const description = getDescription(sop.contentMarkdown);
+  const author = sop.createdBy?.name || "Système";
+  const version = sop.version || 1;
+
   return (
     <Link
       href={`/sops/${sop.slug}`}
@@ -41,7 +56,7 @@ export function SOPCard({ sop }: SOPCardProps) {
             <FileText className="h-5 w-5 text-blue-500" />
           </div>
           <div>
-            <span className="text-xs font-medium text-slate-500">{sop.code}</span>
+            <span className="text-xs font-medium text-slate-500">{sop.slug}</span>
             <h3 className="text-sm font-semibold text-white group-hover:text-emerald-400 transition-colors">
               {sop.title}
             </h3>
@@ -57,7 +72,7 @@ export function SOPCard({ sop }: SOPCardProps) {
       </div>
 
       {/* Description */}
-      <p className="mt-4 text-sm text-slate-400 line-clamp-2">{sop.description}</p>
+      <p className="mt-4 text-sm text-slate-400 line-clamp-2">{description}</p>
 
       {/* Alert Types */}
       <div className="mt-4 flex flex-wrap gap-2">
@@ -77,13 +92,13 @@ export function SOPCard({ sop }: SOPCardProps) {
         <div className="flex items-center gap-4 text-xs text-slate-500">
           <span className="flex items-center gap-1">
             <User className="h-3 w-3" />
-            {sop.author}
+            {author}
           </span>
           <span className="flex items-center gap-1">
             <Clock className="h-3 w-3" />
-            {formatRelativeTime(sop.updatedAt)}
+            {formatRelativeTime(new Date(sop.updatedAt))}
           </span>
-          <span>v{sop.version}</span>
+          <span>v{version}</span>
         </div>
         <ArrowRight className="h-4 w-4 text-slate-500 group-hover:text-emerald-400 transition-colors" />
       </div>
