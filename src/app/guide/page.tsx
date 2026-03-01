@@ -1,44 +1,6 @@
-import { GraduationCap, BookOpen, PlayCircle, Target, CheckCircle } from "lucide-react";
+import { GraduationCap, BookOpen, PlayCircle, Target, Clock, Tag, ArrowRight } from "lucide-react";
 import Link from "next/link";
-
-const guides = [
-  {
-    id: "1",
-    title: "Analyser une alerte SSH Brute Force",
-    description: "Apprenez à identifier et traiter les tentatives de brute force SSH.",
-    duration: "15 min",
-    level: "Débutant",
-    completed: true,
-    steps: 6,
-  },
-  {
-    id: "2",
-    title: "Investigation DNS Tunneling",
-    description: "Guide complet pour détecter l'exfiltration de données via DNS.",
-    duration: "25 min",
-    level: "Intermédiaire",
-    completed: false,
-    steps: 8,
-  },
-  {
-    id: "3",
-    title: "Utiliser Kibana pour la recherche",
-    description: "Maîtrisez les requêtes KQL pour analyser les logs efficacement.",
-    duration: "20 min",
-    level: "Débutant",
-    completed: false,
-    steps: 5,
-  },
-  {
-    id: "4",
-    title: "Analyse des logs Zeek",
-    description: "Comprendre et exploiter les métadonnées réseau de Zeek.",
-    duration: "30 min",
-    level: "Intermédiaire",
-    completed: false,
-    steps: 7,
-  },
-];
+import { guides, getAllCategories } from "@/data/guides";
 
 const quickActions = [
   {
@@ -54,6 +16,12 @@ const quickActions = [
     query: '@timestamp >= now-24h',
   },
 ];
+
+const levelColors: Record<string, string> = {
+  "Débutant": "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+  "Intermédiaire": "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
+  "Avancé": "text-red-400 bg-red-500/10 border-red-500/30",
+};
 
 export default function GuidePage() {
   return (
@@ -91,52 +59,70 @@ export default function GuidePage() {
 
       {/* Guides Grid */}
       <div>
-        <h2 className="text-lg font-semibold text-white mb-4">
-          Guides de Formation
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-white">
+            Guides de Formation ({guides.length})
+          </h2>
+          <div className="flex gap-2">
+            {getAllCategories().map((cat) => (
+              <span key={cat} className="px-2 py-1 text-xs rounded-full border border-slate-700 bg-slate-800 text-slate-400">
+                {cat}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {guides.map((guide) => (
             <Link
               key={guide.id}
               href={`/guide/${guide.id}`}
-              className="group rounded-xl border border-slate-800 bg-slate-900 p-6 hover:border-slate-700 transition-colors"
+              className="group rounded-xl border border-slate-800 bg-slate-900 p-6 hover:border-purple-500/50 transition-all hover:shadow-lg hover:shadow-purple-500/10"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  {guide.completed ? (
-                    <div className="rounded-lg bg-emerald-500/10 p-2">
-                      <CheckCircle className="h-5 w-5 text-emerald-500" />
-                    </div>
-                  ) : (
-                    <div className="rounded-lg bg-purple-500/10 p-2">
-                      <PlayCircle className="h-5 w-5 text-purple-500" />
-                    </div>
-                  )}
-                  <div>
-                    <h3 className="text-sm font-semibold text-white group-hover:text-emerald-400">
-                      {guide.title}
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-1">
-                      {guide.description}
-                    </p>
-                  </div>
+              <div className="flex items-start gap-3">
+                <div className="rounded-lg bg-purple-500/10 p-2 group-hover:bg-purple-500/20 transition-colors">
+                  <PlayCircle className="h-5 w-5 text-purple-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-semibold text-white group-hover:text-purple-400 transition-colors line-clamp-2">
+                    {guide.title}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1 line-clamp-2">
+                    {guide.description}
+                  </p>
                 </div>
               </div>
 
-              <div className="mt-4 flex items-center gap-4 text-xs text-slate-500">
-                <span className="flex items-center gap-1">
-                  <Target className="h-3 w-3" />
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+                <span className={`px-2 py-0.5 rounded-full border ${levelColors[guide.level]}`}>
                   {guide.level}
                 </span>
-                <span>{guide.duration}</span>
-                <span>{guide.steps} étapes</span>
+                <span className="flex items-center gap-1 text-slate-500">
+                  <Clock className="h-3 w-3" />
+                  {guide.duration}
+                </span>
+                <span className="flex items-center gap-1 text-slate-500">
+                  <Target className="h-3 w-3" />
+                  {guide.steps.length} étapes
+                </span>
               </div>
 
-              {guide.completed && (
-                <div className="mt-3">
-                  <span className="text-xs text-emerald-400">✓ Complété</span>
-                </div>
-              )}
+              <div className="mt-3 flex flex-wrap gap-1">
+                {guide.tags.slice(0, 3).map((tag) => (
+                  <span key={tag} className="px-2 py-0.5 text-[10px] rounded-full bg-slate-800 text-slate-400">
+                    {tag}
+                  </span>
+                ))}
+                {guide.tags.length > 3 && (
+                  <span className="px-2 py-0.5 text-[10px] rounded-full bg-slate-800 text-slate-500">
+                    +{guide.tags.length - 3}
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4 flex items-center gap-1 text-xs text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                Commencer le guide
+                <ArrowRight className="h-3 w-3" />
+              </div>
             </Link>
           ))}
         </div>

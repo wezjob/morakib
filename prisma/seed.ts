@@ -2,7 +2,17 @@ import { PrismaClient } from "../src/generated/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// Parse DATABASE_URL or use explicit params
+const dbUrl = process.env.DATABASE_URL || "postgresql://morakib:morakib_password@localhost:5433/morakib";
+const url = new URL(dbUrl);
+
+const pool = new Pool({
+  host: url.hostname,
+  port: parseInt(url.port || "5432"),
+  database: url.pathname.slice(1).split("?")[0],
+  user: url.username,
+  password: url.password,
+});
 const adapter = new PrismaPg(pool);
 const db = new PrismaClient({ adapter });
 

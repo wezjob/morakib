@@ -14,9 +14,11 @@ import {
   Shield,
   User,
   Send,
+  Loader2,
 } from "lucide-react";
 import { cn, formatDate, severityColor, statusColor } from "@/lib/utils";
 import { useState } from "react";
+import { useExportToIRIS, useSubmitInvestigation } from "@/hooks/use-alerts";
 
 interface AlertDetailViewProps {
   alert: {
@@ -69,6 +71,30 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
   const [checklistState, setChecklistState] = useState<Record<string, boolean>>({});
   const [findings, setFindings] = useState("");
   const [conclusion, setConclusion] = useState<string | null>(null);
+  const [irisResult, setIrisResult] = useState<{
+    success: boolean;
+    mock?: boolean;
+    case_id?: number;
+    case_soc_id?: string;
+  } | null>(null);
+  
+  const exportToIRIS = useExportToIRIS();
+  const submitInvestigation = useSubmitInvestigation();
+
+  const handleExportToIRIS = async () => {
+    try {
+      const result = await exportToIRIS.mutateAsync(alert.id);
+      setIrisResult({
+        success: result.success,
+        mock: result.mock,
+        case_id: result.case.case_id,
+        case_soc_id: result.case.case_soc_id,
+      });
+    } catch (error) {
+      console.error("Export to IRIS failed:", error);
+      setIrisResult({ success: false });
+    }
+  };
 
   const toggleCheckItem = (id: string) => {
     setChecklistState((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -112,6 +138,18 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportToIRIS}
+            disabled={exportToIRIS.isPending}
+            className="flex items-center gap-2 rounded-lg border border-purple-700 bg-purple-900/50 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-800/50 disabled:opacity-50"
+          >
+            {exportToIRIS.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ExternalLink className="h-4 w-4" />
+            )}
+            Export IRIS
+          </button>
           <button className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
             Assigner
           </button>
@@ -120,6 +158,33 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
           </button>
         </div>
       </div>
+
+      {/* IRIS Export Result */}
+      {irisResult && (
+        <div
+          className={`rounded-xl border p-4 ${
+            irisResult.success
+              ? "border-green-800/50 bg-green-900/20"
+              : "border-red-800/50 bg-red-900/20"
+          }`}
+        >
+          {irisResult.success ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-green-400">
+                  Exporté vers IRIS avec succès
+                  {irisResult.mock && " (mode démo)"}
+                </p>
+                <p className="text-sm text-slate-400">
+                  Case ID: {irisResult.case_id} | SOC ID: {irisResult.case_soc_id}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-red-400">Échec de l&apos;export vers IRIS</p>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Left Column - Alert Details & Investigation */}
@@ -272,8 +337,30 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
 
             {/* Submit */}
             <div className="mt-6 flex justify-end">
-              <button className="flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2 text-sm font-medium text-white hover:bg-emerald-500">
-                <Send className="h-4 w-4" />
+              <button
+                onClick={async () => {
+                  if (!conclusion) return;
+                  try {
+                    await submitInvestigation.mutateAsync({
+                      alertId: alert.id,
+                      analystId: "current-user", // TODO: get from session
+                      findings,
+                      conclusion: conclusion as "TRUE_POSITIVE" | "FALSE_POSITIVE" | "NEEDS_ESCALATION" | "INCONCLUSIVE",
+                      checklistCompleted: checklistState,
+                    });
+                    window.alert("Investigation soumise avec succès!");
+                  } catch (error) {
+                    console.error("Failed to submit investigation:", error);
+                  }
+                }}
+                disabled={!conclusion || submitInvestigation.isPending}
+                className="flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {submitInvestigation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
                 Soumettre Investigation
               </button>
             </div>

@@ -3,13 +3,16 @@
 import { useState } from "react";
 import { FileText, Plus, Search, Loader2 } from "lucide-react";
 import { SOPCard } from "@/components/sops/sop-card";
+import { SOPForm } from "@/components/sops/sop-form";
+import { Modal } from "@/components/ui/modal";
 import { useSOPs } from "@/hooks/use-sops";
 
-const categories = ["Toutes", "Authentification", "Réseau", "Malware", "Web", "Endpoint"];
+const categories = ["Toutes", "Authentification", "Réseau", "Malware", "Web", "Endpoint", "Intrusion"];
 
 export default function SOPsPage() {
   const [selectedCategory, setSelectedCategory] = useState("Toutes");
   const [search, setSearch] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
   
   const { data: sops, isLoading, error } = useSOPs({
     category: selectedCategory === "Toutes" ? undefined : selectedCategory,
@@ -31,7 +34,10 @@ export default function SOPsPage() {
             Bibliothèque des procédures standard pour l&apos;analyse et la réponse aux incidents
           </p>
         </div>
-        <button className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500">
+        <button 
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+        >
           <Plus className="h-4 w-4" />
           Nouvelle SOP
         </button>
@@ -87,6 +93,19 @@ export default function SOPsPage() {
           <p className="mt-4 text-slate-400">Aucune SOP trouvée</p>
         </div>
       )}
+
+      {/* Create SOP Modal */}
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Créer une SOP"
+        size="xl"
+      >
+        <SOPForm
+          onSuccess={() => setShowCreateModal(false)}
+          onCancel={() => setShowCreateModal(false)}
+        />
+      </Modal>
     </div>
   );
 }

@@ -93,6 +93,27 @@ async function submitInvestigation(data: InvestigationData): Promise<unknown> {
   return res.json();
 }
 
+// Export to IRIS
+interface IRISExportResult {
+  success: boolean;
+  mock?: boolean;
+  message: string;
+  case: {
+    case_id: number;
+    case_name: string;
+    case_soc_id: string;
+  };
+  iocs_added?: number;
+}
+
+async function exportToIRIS(alertId: string): Promise<IRISExportResult> {
+  const res = await fetch(`${API_BASE}/${alertId}/export-iris`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to export to IRIS");
+  return res.json();
+}
+
 // Hooks
 export function useAlerts(filters: AlertsFilters = {}) {
   return useQuery({
@@ -149,5 +170,11 @@ export function useSubmitInvestigation() {
       queryClient.invalidateQueries({ queryKey: ["alert", variables.alertId] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
+  });
+}
+
+export function useExportToIRIS() {
+  return useMutation({
+    mutationFn: exportToIRIS,
   });
 }
