@@ -102,6 +102,7 @@ model User {
   tasks           Task[]
   metrics         AnalystMetric[]
   badges          UserBadge[]
+  sopProgress     SOPProgress[]
   
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
@@ -336,4 +337,34 @@ model UserBadge {
   
   @@unique([userId, badgeId])
   @@map("user_badges")
+}
+
+// ============================================
+// SOP Progress Tracking
+// ============================================
+model SOPProgress {
+  id                   String   @id @default(cuid())
+  userId               String   @map("user_id")
+  user                 User     @relation(fields: [userId], references: [id])
+  sopSlug              String   @map("sop_slug")
+  
+  // Progress state
+  checklistState       Json     @default("{}") @map("checklist_state")
+  activeStep           Int      @default(1) @map("active_step")
+  completionPercentage Int      @default(0) @map("completion_percentage")
+  
+  // Time tracking
+  startedAt            DateTime @default(now()) @map("started_at")
+  completedAt          DateTime? @map("completed_at")
+  elapsedSeconds       Int      @default(0) @map("elapsed_seconds")
+  completed            Boolean  @default(false)
+  
+  // Timestamps
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  
+  @@unique([userId, sopSlug])
+  @@index([userId])
+  @@index([sopSlug])
+  @@map("sop_progress")
 }
