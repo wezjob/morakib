@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FileText, Clock, User, Tag, ArrowRight, Shield } from "lucide-react";
+import type { MouseEvent } from "react";
+import { FileText, Clock, User, Tag, ArrowRight, Shield, Download } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils";
 
 interface SOPCardProps {
@@ -88,6 +89,13 @@ export function SOPCard({ sop }: SOPCardProps) {
   const author = sop.createdBy?.name || "Système";
   const version = sop.version || 1;
   const hasMitre = sop.mitreTechniques && sop.mitreTechniques.length > 0;
+
+  const downloadPDF = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const url = `/api/sops/export?identifier=${encodeURIComponent(sop.id || sop.slug)}&source=custom`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   return (
     <Link
@@ -180,6 +188,14 @@ export function SOPCard({ sop }: SOPCardProps) {
             {formatRelativeTime(new Date(sop.updatedAt))}
           </span>
           <span>v{version}</span>
+          <button
+            type="button"
+            onClick={downloadPDF}
+            className="inline-flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-slate-400 hover:text-white"
+          >
+            <Download className="h-3 w-3" />
+            PDF
+          </button>
         </div>
         <ArrowRight className="h-4 w-4 text-slate-500 group-hover:text-emerald-400 transition-colors" />
       </div>

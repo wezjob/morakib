@@ -21,6 +21,7 @@ import {
   ClipboardList,
   Bookmark,
   Share2,
+  Download,
   Loader2
 } from "lucide-react";
 import { getSOPBySlug, type SOPTemplate, type SOPStep } from "@/data/sops";
@@ -182,6 +183,11 @@ export default function SOPDetailPage() {
     return `${mins}m ${secs}s`;
   };
 
+  const downloadPDF = () => {
+    const url = `/api/sops/export?identifier=${encodeURIComponent(slug)}&source=template`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -239,6 +245,13 @@ export default function SOPDetailPage() {
           <p className="text-slate-400 mt-3 max-w-2xl">{sop.description}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={downloadPDF}
+            className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300 hover:text-white"
+          >
+            <Download className="h-4 w-4" />
+            PDF
+          </button>
           <button className="rounded-lg border border-slate-700 bg-slate-800 p-2 text-slate-400 hover:text-white">
             <Bookmark className="h-4 w-4" />
           </button>

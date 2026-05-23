@@ -24,6 +24,7 @@ import {
   ClipboardCheck,
   Layers,
   Gauge,
+  Download,
 } from "lucide-react";
 import {
   getTacticById,
@@ -263,6 +264,12 @@ export default function CustomSOPDetailPage({
     target.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const downloadPDF = () => {
+    if (!sop) return;
+    const url = `/api/sops/export?identifier=${encodeURIComponent(sop.id || sop.slug)}&source=custom`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -315,13 +322,22 @@ export default function CustomSOPDetailPage({
           <ChevronRight className="h-4 w-4 text-slate-600" />
           <span className="text-white font-medium">{sop.title}</span>
         </div>
-        <button
-          onClick={() => setShowEditModal(true)}
-          className="flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white"
-        >
-          <Edit className="h-4 w-4" />
-          Modifier
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={downloadPDF}
+            className="flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white"
+          >
+            <Download className="h-4 w-4" />
+            PDF
+          </button>
+          <button
+            onClick={() => setShowEditModal(true)}
+            className="flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white"
+          >
+            <Edit className="h-4 w-4" />
+            Modifier
+          </button>
+        </div>
       </div>
 
       {/* Title Card */}

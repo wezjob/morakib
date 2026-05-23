@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import type { MouseEvent } from "react";
 import { 
   FileText, 
   Clock, 
   Users, 
   Target, 
   ChevronRight,
-  Play 
+  Play,
+  Download,
 } from "lucide-react";
 import { type SOPTemplate } from "@/data/sops";
 
@@ -44,6 +46,13 @@ export function SOPTemplateCard({ sop }: SOPTemplateCardProps) {
     0
   );
   const totalKpis = sop.kpis?.length || 0;
+
+  const downloadPDF = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const url = `/api/sops/export?identifier=${encodeURIComponent(sop.slug)}&source=template`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   return (
     <Link
@@ -122,6 +131,14 @@ export function SOPTemplateCard({ sop }: SOPTemplateCardProps) {
               +{sop.alertTypes.length - 2}
             </span>
           )}
+          <button
+            type="button"
+            onClick={downloadPDF}
+            className="inline-flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-xs text-slate-400 hover:text-white"
+          >
+            <Download className="h-3 w-3" />
+            PDF
+          </button>
         </div>
         <div className="flex items-center gap-1 text-sm font-medium text-emerald-500 group-hover:translate-x-1 transition-transform">
           <Play className="h-4 w-4" />
