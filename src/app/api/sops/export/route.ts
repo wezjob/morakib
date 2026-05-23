@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import PDFDocument from "pdfkit";
+import PDFDocument from "pdfkit/js/pdfkit.standalone";
 import { db } from "@/lib/db";
 import { getSOPBySlug } from "@/data/sops";
 
