@@ -78,9 +78,7 @@ async function resolveSOP(identifier: string, source: "auto" | "custom" | "templ
         status: "PUBLISHED",
         severity: "MEDIUM",
         alertTypes: template.alertTypes,
-        checklist: template.steps.flatMap((step) =>
-          (step.checklist || []).map((item) => `Etape ${step.id} - ${item.text}`)
-        ),
+        checklist: template.steps.flatMap((step) => (step.checklist || []).map((item) => item.text)),
         procedures: template.steps.map((step) => `Etape ${step.id}: ${step.title}`),
         detection: [],
         mitigation: [],
@@ -182,7 +180,12 @@ function writeSectionTitle(pdf: PDFKit.PDFDocument, title: string) {
   pdf.moveDown(1.8);
 }
 
-function writeBulletList(pdf: PDFKit.PDFDocument, items: string[], bulletColor = "#0f172a") {
+function writeBulletList(
+  pdf: PDFKit.PDFDocument,
+  items: string[],
+  bulletColor = "#0f172a",
+  listStyle: "bullet" | "checkbox" = "bullet"
+) {
   const left = pdf.page.margins.left;
   const textX = left + 14;
   const maxWidth = pdf.page.width - pdf.page.margins.right - textX;
@@ -193,7 +196,14 @@ function writeBulletList(pdf: PDFKit.PDFDocument, items: string[], bulletColor =
     ensureSpace(pdf, 20);
 
     const currentY = pdf.y;
-    pdf.fillColor(bulletColor).font("Helvetica-Bold").fontSize(11).text("•", left + 2, currentY + 1);
+    if (listStyle === "checkbox") {
+      pdf.save();
+      pdf.roundedRect(left + 1, currentY + 3, 8, 8, 1.5).lineWidth(1).stroke("#64748b");
+      pdf.restore();
+    } else {
+      pdf.fillColor(bulletColor).font("Helvetica-Bold").fontSize(11).text("•", left + 2, currentY + 1);
+    }
+
     pdf.fillColor("#111827").font("Helvetica").fontSize(10).text(item, textX, currentY, {
       width: maxWidth,
       lineGap: 2,
@@ -261,7 +271,7 @@ async function generatePdfBuffer(sop: ExportSOPPayload): Promise<Buffer> {
 
     if (sop.checklist && sop.checklist.length > 0) {
       writeSectionTitle(pdf, "Checklist operationnelle");
-      writeBulletList(pdf, sop.checklist, "#0284c7");
+      writeBulletList(pdf, sop.checklist, "#0284c7", "checkbox");
     }
 
     if (sop.elkQueries && sop.elkQueries.length > 0) {
