@@ -449,11 +449,11 @@ async function generatePdfBuffer(sop: ExportSOPPayload): Promise<Buffer> {
     const range = pdf.bufferedPageRange();
     for (let i = 0; i < range.count; i += 1) {
       pdf.switchToPage(i);
-      const footerY = pdf.page.height - pdf.page.margins.bottom + 6;
+      const footerY = pdf.page.height - pdf.page.margins.bottom - 12;
       const pageNumber = `Page ${i + 1}/${range.count}`;
 
       pdf.save();
-      pdf.moveTo(pdf.page.margins.left, footerY - 6).lineTo(pdf.page.width - pdf.page.margins.right, footerY - 6).stroke("#e2e8f0");
+      pdf.moveTo(pdf.page.margins.left, footerY - 4).lineTo(pdf.page.width - pdf.page.margins.right, footerY - 4).stroke("#e2e8f0");
       pdf.restore();
 
       pdf.fillColor("#64748b").font("Helvetica").fontSize(8.5).text("Classification: INTERNE - SOC", pdf.page.margins.left, footerY, {
