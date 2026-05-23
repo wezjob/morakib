@@ -100,118 +100,227 @@ async function resolveSOP(identifier: string, source: "auto" | "custom" | "templ
   return null;
 }
 
+function ensureSpace(pdf: PDFKit.PDFDocument, minHeight: number) {
+  const bottomLimit = pdf.page.height - pdf.page.margins.bottom;
+  if (pdf.y + minHeight > bottomLimit) {
+    pdf.addPage();
+  }
+}
+
+function drawHeader(pdf: PDFKit.PDFDocument, sop: ExportSOPPayload, generatedAt: string) {
+  const contentWidth = pdf.page.width - pdf.page.margins.left - pdf.page.margins.right;
+  const headerTop = pdf.y;
+  const headerHeight = 84;
+
+  pdf.save();
+  pdf.roundedRect(pdf.page.margins.left, headerTop, contentWidth, headerHeight, 10).fill("#0f172a");
+  pdf.restore();
+
+  pdf.fillColor("#e2e8f0").font("Helvetica-Bold").fontSize(12).text("MORAKIB SOC", pdf.page.margins.left + 16, headerTop + 14);
+  pdf.fillColor("#94a3b8").font("Helvetica").fontSize(9).text("Document operationnel - export SOP", pdf.page.margins.left + 16, headerTop + 30);
+
+  pdf.fillColor("#ffffff").font("Helvetica-Bold").fontSize(16).text(sop.title, pdf.page.margins.left + 16, headerTop + 48, {
+    width: contentWidth - 180,
+    ellipsis: true,
+  });
+
+  pdf.fillColor("#cbd5e1").font("Helvetica").fontSize(9).text(`Genere le ${generatedAt}`, pdf.page.margins.left + contentWidth - 145, headerTop + 14, {
+    width: 130,
+    align: "right",
+  });
+
+  pdf.y = headerTop + headerHeight + 14;
+}
+
+function drawMetaPanel(pdf: PDFKit.PDFDocument, sop: ExportSOPPayload) {
+  const contentWidth = pdf.page.width - pdf.page.margins.left - pdf.page.margins.right;
+  const panelTop = pdf.y;
+  const panelHeight = 68;
+  const left = pdf.page.margins.left;
+
+  pdf.save();
+  pdf.roundedRect(left, panelTop, contentWidth, panelHeight, 8).fill("#f8fafc");
+  pdf.restore();
+
+  const entries = [
+    ["Source", sop.sourceLabel],
+    ["Categorie", sop.category],
+    ["Statut", sop.status || "N/A"],
+    ["Severite", sop.severity || "N/A"],
+    ["Temps estime", sop.estimatedTime || "N/A"],
+  ];
+
+  const firstRowY = panelTop + 14;
+  const secondRowY = panelTop + 38;
+  const colWidth = contentWidth / 3;
+
+  entries.forEach(([label, value], idx) => {
+    const row = idx < 3 ? firstRowY : secondRowY;
+    const col = idx < 3 ? idx : idx - 3;
+    const x = left + col * colWidth + 12;
+
+    pdf.fillColor("#64748b").font("Helvetica-Bold").fontSize(8).text(label, x, row);
+    pdf.fillColor("#0f172a").font("Helvetica").fontSize(10).text(value, x, row + 10, {
+      width: colWidth - 24,
+      ellipsis: true,
+    });
+  });
+
+  pdf.y = panelTop + panelHeight + 16;
+}
+
+function writeSectionTitle(pdf: PDFKit.PDFDocument, title: string) {
+  ensureSpace(pdf, 36);
+  const left = pdf.page.margins.left;
+  const width = pdf.page.width - pdf.page.margins.left - pdf.page.margins.right;
+
+  pdf.save();
+  pdf.roundedRect(left, pdf.y, width, 24, 6).fill("#e2e8f0");
+  pdf.restore();
+
+  pdf.fillColor("#0f172a").font("Helvetica-Bold").fontSize(11).text(title, left + 10, pdf.y + 7);
+  pdf.moveDown(1.8);
+}
+
+function writeBulletList(pdf: PDFKit.PDFDocument, items: string[], bulletColor = "#0f172a") {
+  const left = pdf.page.margins.left;
+  const textX = left + 14;
+  const maxWidth = pdf.page.width - pdf.page.margins.right - textX;
+
+  for (const rawItem of items) {
+    const item = rawItem.trim();
+    if (!item) continue;
+    ensureSpace(pdf, 20);
+
+    const currentY = pdf.y;
+    pdf.fillColor(bulletColor).font("Helvetica-Bold").fontSize(11).text("•", left + 2, currentY + 1);
+    pdf.fillColor("#111827").font("Helvetica").fontSize(10).text(item, textX, currentY, {
+      width: maxWidth,
+      lineGap: 2,
+    });
+    pdf.moveDown(0.2);
+  }
+
+  pdf.moveDown(0.6);
+}
+
+function writeCodeBlock(pdf: PDFKit.PDFDocument, content: string) {
+  const left = pdf.page.margins.left;
+  const width = pdf.page.width - pdf.page.margins.left - pdf.page.margins.right;
+  const blockTop = pdf.y;
+  const text = content.trim();
+  if (!text) return;
+
+  const textHeight = Math.max(pdf.heightOfString(text, { width: width - 30, lineGap: 1 }), 18);
+  const blockHeight = textHeight + 14;
+
+  ensureSpace(pdf, blockHeight + 8);
+
+  pdf.save();
+  pdf.roundedRect(left, blockTop, width, blockHeight, 6).fill("#f1f5f9");
+  pdf.restore();
+
+  pdf.fillColor("#334155").font("Courier").fontSize(8.5).text(text, left + 12, blockTop + 7, {
+    width: width - 24,
+    lineGap: 1,
+  });
+  pdf.font("Helvetica");
+  pdf.y = blockTop + blockHeight + 6;
+}
+
 async function generatePdfBuffer(sop: ExportSOPPayload): Promise<Buffer> {
-  const pdf = new PDFDocument({ size: "A4", margin: 40 });
+  const pdf = new PDFDocument({ size: "A4", margin: 42, bufferPages: true });
   const chunks: Buffer[] = [];
+  const generatedAt = new Date().toLocaleString("fr-FR");
 
   return await new Promise<Buffer>((resolve, reject) => {
     pdf.on("data", (chunk) => chunks.push(chunk as Buffer));
     pdf.on("end", () => resolve(Buffer.concat(chunks)));
     pdf.on("error", reject);
 
-    pdf.fontSize(18).fillColor("#0f172a").text("MORAKIB SOC", { continued: false });
-    pdf.fontSize(10).fillColor("#64748b").text("Export SOP");
-    pdf.moveDown(0.4);
-
-    pdf.fillColor("#000000").fontSize(16).text(sop.title, { underline: true });
-    pdf.moveDown(0.4);
-    pdf.fontSize(10).fillColor("#334155").text(`Source: ${sop.sourceLabel}`);
-    pdf.text(`Categorie: ${sop.category}`);
-
-    if (sop.status) pdf.text(`Statut: ${sop.status}`);
-    if (sop.severity) pdf.text(`Severite: ${sop.severity}`);
-    if (sop.estimatedTime) pdf.text(`Temps estime: ${sop.estimatedTime}`);
-
-    pdf.text(`Genere le ${new Date().toLocaleString("fr-FR")}`);
-    pdf.moveDown(0.8);
+    drawHeader(pdf, sop, generatedAt);
+    drawMetaPanel(pdf, sop);
 
     if (sop.description) {
-      pdf.fontSize(13).fillColor("#0f172a").text("Description");
-      pdf.moveDown(0.2);
-      pdf.fontSize(11).fillColor("#111827").text(sop.description);
-      pdf.moveDown(0.8);
+      writeSectionTitle(pdf, "Description");
+      pdf.fillColor("#111827").font("Helvetica").fontSize(10.5).text(sop.description, {
+        lineGap: 2,
+      });
+      pdf.moveDown(1);
     }
 
     if (sop.alertTypes && sop.alertTypes.length > 0) {
-      pdf.fontSize(13).fillColor("#0f172a").text("Types d'alertes");
-      pdf.moveDown(0.2);
-      for (const alertType of sop.alertTypes) {
-        pdf.fontSize(10).fillColor("#111827").text(`- ${alertType}`, { indent: 10 });
-      }
-      pdf.moveDown(0.8);
+      writeSectionTitle(pdf, "Types d'alertes");
+      writeBulletList(pdf, sop.alertTypes, "#ea580c");
     }
 
     if (sop.procedures && sop.procedures.length > 0) {
-      pdf.fontSize(13).fillColor("#0f172a").text("Procedures");
-      pdf.moveDown(0.2);
-      for (const procedure of sop.procedures) {
-        pdf.fontSize(10).fillColor("#111827").text(`- ${procedure}`, { indent: 10 });
-      }
-      pdf.moveDown(0.8);
+      writeSectionTitle(pdf, "Procedures");
+      writeBulletList(pdf, sop.procedures);
     }
 
     if (sop.checklist && sop.checklist.length > 0) {
-      pdf.fontSize(13).fillColor("#0f172a").text("Checklist");
-      pdf.moveDown(0.2);
-      for (const item of sop.checklist) {
-        pdf.fontSize(10).fillColor("#111827").text(`- ${item}`, { indent: 10 });
-      }
-      pdf.moveDown(0.8);
+      writeSectionTitle(pdf, "Checklist operationnelle");
+      writeBulletList(pdf, sop.checklist, "#0284c7");
     }
 
     if (sop.elkQueries && sop.elkQueries.length > 0) {
-      pdf.fontSize(13).fillColor("#0f172a").text("Requetes ELK");
-      pdf.moveDown(0.2);
+      writeSectionTitle(pdf, "Requetes ELK");
       for (const query of sop.elkQueries) {
         if (query.description) {
-          pdf.fontSize(10).fillColor("#111827").text(`- ${query.description}`, { indent: 10 });
+          ensureSpace(pdf, 22);
+          pdf.fillColor("#0f172a").font("Helvetica-Bold").fontSize(10).text(query.description);
+          pdf.moveDown(0.2);
         }
         if (query.query) {
-          pdf.font("Courier").fontSize(9).fillColor("#334155").text(query.query, {
-            indent: 20,
-          });
-          pdf.font("Helvetica");
+          writeCodeBlock(pdf, query.query);
         }
-        pdf.moveDown(0.2);
+        pdf.moveDown(0.3);
       }
-      pdf.moveDown(0.8);
+      pdf.moveDown(0.4);
     }
 
     if (sop.detection && sop.detection.length > 0) {
-      pdf.fontSize(13).fillColor("#0f172a").text("Detection");
-      pdf.moveDown(0.2);
-      for (const item of sop.detection) {
-        pdf.fontSize(10).fillColor("#111827").text(`- ${item}`, { indent: 10 });
-      }
-      pdf.moveDown(0.8);
+      writeSectionTitle(pdf, "Detection");
+      writeBulletList(pdf, sop.detection, "#7c3aed");
     }
 
     if (sop.mitigation && sop.mitigation.length > 0) {
-      pdf.fontSize(13).fillColor("#0f172a").text("Mitigation");
-      pdf.moveDown(0.2);
-      for (const item of sop.mitigation) {
-        pdf.fontSize(10).fillColor("#111827").text(`- ${item}`, { indent: 10 });
-      }
-      pdf.moveDown(0.8);
+      writeSectionTitle(pdf, "Mitigation");
+      writeBulletList(pdf, sop.mitigation, "#16a34a");
     }
 
     if (sop.dataSources && sop.dataSources.length > 0) {
-      pdf.fontSize(13).fillColor("#0f172a").text("Sources de donnees");
-      pdf.moveDown(0.2);
-      for (const item of sop.dataSources) {
-        pdf.fontSize(10).fillColor("#111827").text(`- ${item}`, { indent: 10 });
-      }
-      pdf.moveDown(0.8);
+      writeSectionTitle(pdf, "Sources de donnees");
+      writeBulletList(pdf, sop.dataSources, "#0891b2");
     }
 
     if (sop.contentMarkdown) {
-      pdf.fontSize(13).fillColor("#0f172a").text("Contenu detaille");
-      pdf.moveDown(0.2);
-      pdf.fontSize(10).fillColor("#111827").text(stripMarkdown(sop.contentMarkdown));
+      writeSectionTitle(pdf, "Contenu detaille");
+      pdf.fillColor("#1f2937").font("Helvetica").fontSize(9.5).text(stripMarkdown(sop.contentMarkdown), {
+        lineGap: 2,
+      });
+      pdf.moveDown(0.6);
     }
 
-    pdf.moveDown(1);
-    pdf.fontSize(9).fillColor("#64748b").text("Classification: INTERNE - SOC", { align: "right" });
+    const range = pdf.bufferedPageRange();
+    for (let i = 0; i < range.count; i += 1) {
+      pdf.switchToPage(i);
+      const footerY = pdf.page.height - pdf.page.margins.bottom + 6;
+      const pageNumber = `Page ${i + 1}/${range.count}`;
+
+      pdf.save();
+      pdf.moveTo(pdf.page.margins.left, footerY - 6).lineTo(pdf.page.width - pdf.page.margins.right, footerY - 6).stroke("#e2e8f0");
+      pdf.restore();
+
+      pdf.fillColor("#64748b").font("Helvetica").fontSize(8.5).text("Classification: INTERNE - SOC", pdf.page.margins.left, footerY, {
+        width: 220,
+      });
+      pdf.text(pageNumber, pdf.page.width - pdf.page.margins.right - 90, footerY, {
+        width: 90,
+        align: "right",
+      });
+    }
 
     pdf.end();
   });
