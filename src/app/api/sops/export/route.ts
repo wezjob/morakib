@@ -78,7 +78,9 @@ async function resolveSOP(identifier: string, source: "auto" | "custom" | "templ
         status: "PUBLISHED",
         severity: "MEDIUM",
         alertTypes: template.alertTypes,
-        checklist: template.steps.flatMap((step) => (step.checklist || []).map((item) => item.text)),
+        checklist: template.steps.flatMap((step) =>
+          (step.checklist || []).map((item) => `${step.title} - ${item.text}`)
+        ),
         procedures: template.steps.map((step) => `Etape ${step.id}: ${step.title}`),
         detection: [],
         mitigation: [],
