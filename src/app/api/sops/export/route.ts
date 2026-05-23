@@ -247,6 +247,113 @@ function writeCodeBlock(pdf: PDFKit.PDFDocument, content: string) {
   pdf.y = blockTop + blockHeight + 6;
 }
 
+type DetailedContentBlock = {
+  title: string;
+  paragraphs: string[];
+  bullets: string[];
+};
+
+function parseDetailedContent(markdown: string): DetailedContentBlock[] {
+  const lines = markdown.split("\n");
+  const blocks: DetailedContentBlock[] = [];
+  let current: DetailedContentBlock = { title: "Vue d'ensemble", paragraphs: [], bullets: [] };
+  let paragraphBuffer: string[] = [];
+  let inCodeFence = false;
+
+  const flushParagraph = () => {
+    if (paragraphBuffer.length > 0) {
+      const paragraph = paragraphBuffer.join(" ").replace(/\s+/g, " ").trim();
+      if (paragraph) current.paragraphs.push(paragraph);
+      paragraphBuffer = [];
+    }
+  };
+
+  const pushCurrentBlock = () => {
+    flushParagraph();
+    if (current.paragraphs.length > 0 || current.bullets.length > 0) {
+      blocks.push(current);
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    if (line.startsWith("```")) {
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    if (inCodeFence) continue;
+
+    const headingMatch = line.match(/^#{2,6}\s+(.+)$/);
+    if (headingMatch) {
+      pushCurrentBlock();
+      current = { title: headingMatch[1].trim(), paragraphs: [], bullets: [] };
+      continue;
+    }
+
+    const bulletMatch = line.match(/^[-*+]\s+(.+)$/) || line.match(/^\d+[.)]\s+(.+)$/);
+    if (bulletMatch) {
+      flushParagraph();
+      const bulletText = bulletMatch[1].trim();
+      if (bulletText) current.bullets.push(bulletText);
+      continue;
+    }
+
+    if (!line) {
+      flushParagraph();
+      continue;
+    }
+
+    if (line.startsWith("#")) continue;
+    paragraphBuffer.push(line);
+  }
+
+  pushCurrentBlock();
+
+  if (blocks.length === 0) {
+    const fallback = stripMarkdown(markdown);
+    if (fallback) {
+      return [{ title: "Vue d'ensemble", paragraphs: [fallback], bullets: [] }];
+    }
+  }
+
+  return blocks;
+}
+
+function writeDetailedContent(pdf: PDFKit.PDFDocument, markdown: string) {
+  const blocks = parseDetailedContent(markdown);
+  const left = pdf.page.margins.left;
+  const width = pdf.page.width - pdf.page.margins.left - pdf.page.margins.right;
+
+  for (const block of blocks) {
+    const estimatedHeight = 34 + block.paragraphs.length * 24 + block.bullets.length * 20;
+    ensureSpace(pdf, Math.max(estimatedHeight, 52));
+
+    const blockTop = pdf.y;
+    pdf.save();
+    pdf.roundedRect(left, blockTop, width, 24, 6).fill("#f1f5f9");
+    pdf.restore();
+
+    pdf.fillColor("#0f172a").font("Helvetica-Bold").fontSize(10.5).text(block.title, left + 10, blockTop + 7);
+    pdf.y = blockTop + 30;
+
+    for (const paragraph of block.paragraphs) {
+      ensureSpace(pdf, 24);
+      pdf.fillColor("#1f2937").font("Helvetica").fontSize(9.8).text(paragraph, left, pdf.y, {
+        width,
+        lineGap: 2,
+      });
+      pdf.moveDown(0.5);
+    }
+
+    if (block.bullets.length > 0) {
+      writeBulletList(pdf, block.bullets, "#334155", "bullet");
+    }
+
+    pdf.moveDown(0.5);
+  }
+}
+
 function writeChecklistByStep(
   pdf: PDFKit.PDFDocument,
   checklistByStep: { title: string; actions: string[] }[]
@@ -336,10 +443,7 @@ async function generatePdfBuffer(sop: ExportSOPPayload): Promise<Buffer> {
 
     if (sop.contentMarkdown) {
       writeSectionTitle(pdf, "Contenu detaille");
-      pdf.fillColor("#1f2937").font("Helvetica").fontSize(9.5).text(stripMarkdown(sop.contentMarkdown), {
-        lineGap: 2,
-      });
-      pdf.moveDown(0.6);
+      writeDetailedContent(pdf, sop.contentMarkdown);
     }
 
     const range = pdf.bufferedPageRange();
