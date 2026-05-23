@@ -226,7 +226,6 @@ function writeBulletList(
 function writeCodeBlock(pdf: PDFKit.PDFDocument, content: string) {
   const left = pdf.page.margins.left;
   const width = pdf.page.width - pdf.page.margins.left - pdf.page.margins.right;
-  const blockTop = pdf.y;
   const text = content.trim();
   if (!text) return;
 
@@ -234,6 +233,7 @@ function writeCodeBlock(pdf: PDFKit.PDFDocument, content: string) {
   const blockHeight = textHeight + 14;
 
   ensureSpace(pdf, blockHeight + 8);
+  const blockTop = pdf.y;
 
   pdf.save();
   pdf.roundedRect(left, blockTop, width, blockHeight, 6).fill("#f1f5f9");
