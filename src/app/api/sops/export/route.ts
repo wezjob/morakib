@@ -14,6 +14,7 @@ type ExportSOPPayload = {
   estimatedTime?: string;
   alertTypes?: string[];
   checklist?: string[];
+  checklistByStep?: { title: string; actions: string[] }[];
   procedures?: string[];
   detection?: string[];
   mitigation?: string[];
@@ -71,6 +72,13 @@ async function resolveSOP(identifier: string, source: "auto" | "custom" | "templ
   if (source !== "custom") {
     const template = getSOPBySlug(identifier);
     if (template) {
+      const checklistByStep = template.steps
+        .map((step) => ({
+          title: `Etape ${step.id} : "${step.title}"`,
+          actions: (step.checklist || []).map((item) => item.text.trim()).filter(Boolean),
+        }))
+        .filter((entry) => entry.actions.length > 0);
+
       return {
         title: template.title,
         category: template.category,
@@ -78,9 +86,8 @@ async function resolveSOP(identifier: string, source: "auto" | "custom" | "templ
         status: "PUBLISHED",
         severity: "MEDIUM",
         alertTypes: template.alertTypes,
-        checklist: template.steps.flatMap((step) =>
-          (step.checklist || []).map((item) => `${step.title} - ${item.text}`)
-        ),
+        checklist: checklistByStep.flatMap((entry) => entry.actions),
+        checklistByStep,
         procedures: template.steps.map((step) => `Etape ${step.id}: ${step.title}`),
         detection: [],
         mitigation: [],
@@ -240,6 +247,22 @@ function writeCodeBlock(pdf: PDFKit.PDFDocument, content: string) {
   pdf.y = blockTop + blockHeight + 6;
 }
 
+function writeChecklistByStep(
+  pdf: PDFKit.PDFDocument,
+  checklistByStep: { title: string; actions: string[] }[]
+) {
+  const left = pdf.page.margins.left;
+
+  for (const stepEntry of checklistByStep) {
+    ensureSpace(pdf, 24);
+    pdf.fillColor("#0f172a").font("Helvetica-Bold").fontSize(10.5).text(stepEntry.title, left, pdf.y, {
+      lineGap: 1,
+    });
+    pdf.moveDown(0.3);
+    writeBulletList(pdf, stepEntry.actions, "#0284c7", "checkbox");
+  }
+}
+
 async function generatePdfBuffer(sop: ExportSOPPayload): Promise<Buffer> {
   const pdf = new PDFDocument({ size: "A4", margin: 42, bufferPages: true });
   const chunks: Buffer[] = [];
@@ -273,7 +296,11 @@ async function generatePdfBuffer(sop: ExportSOPPayload): Promise<Buffer> {
 
     if (sop.checklist && sop.checklist.length > 0) {
       writeSectionTitle(pdf, "Checklist operationnelle");
-      writeBulletList(pdf, sop.checklist, "#0284c7", "checkbox");
+      if (sop.checklistByStep && sop.checklistByStep.length > 0) {
+        writeChecklistByStep(pdf, sop.checklistByStep);
+      } else {
+        writeBulletList(pdf, sop.checklist, "#0284c7", "checkbox");
+      }
     }
 
     if (sop.elkQueries && sop.elkQueries.length > 0) {
