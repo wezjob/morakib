@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import {
   Activity,
   AlertTriangle,
+  AlertCircle,
   RefreshCw,
   Search,
   Shield,
@@ -80,6 +81,8 @@ export default function SIEMDashboardPage() {
   }, [search, selectedSeverity, selectedSource, timeFrom]);
 
   const isConnected = alertsData?.connected ?? false;
+  const isDegraded = Boolean(alertsData?.degraded || statsData?.degraded);
+  const degradedMessage = alertsData?.message || statsData?.message;
   const alerts = alertsData?.alerts ?? [];
   const pagination = alertsData?.pagination;
   const stats = statsData;
@@ -153,6 +156,20 @@ export default function SIEMDashboardPage() {
           </button>
         </div>
       </div>
+
+      {isDegraded && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 mt-0.5 text-amber-300" />
+            <div>
+              <p className="font-medium">Mode degrade SIEM actif</p>
+              <p className="text-amber-100/90">
+                {degradedMessage || "Elasticsearch est temporairement indisponible. Les donnees affichees peuvent etre en cache."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -314,7 +331,7 @@ export default function SIEMDashboardPage() {
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <span className="text-lg mr-1">
-                        {sourceIcons[alert.source] || sourceIcons.unknown}
+                        {sourceIcons[alert.source.toLowerCase()] || sourceIcons.unknown}
                       </span>
                       <span className="text-slate-300 capitalize">{alert.source}</span>
                     </td>

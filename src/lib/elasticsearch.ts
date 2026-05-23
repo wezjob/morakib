@@ -3,6 +3,50 @@ import { Client } from "@elastic/elasticsearch";
 // Elasticsearch client singleton
 let esClient: Client | null = null;
 
+const ES_MAX_RETRIES = 1;
+const ES_RETRY_DELAY_MS = 200;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const msg = error.message.toLowerCase();
+  const transientPatterns = [
+    "timeout",
+    "timed out",
+    "econnrefused",
+    "econnreset",
+    "socket hang up",
+    "service unavailable",
+    "bad gateway",
+    "gateway timeout",
+  ];
+
+  return transientPatterns.some((pattern) => msg.includes(pattern));
+}
+
+async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = ES_MAX_RETRIES): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxRetries || !isRetryableError(error)) {
+        throw error;
+      }
+
+      await sleep(ES_RETRY_DELAY_MS * (attempt + 1));
+    }
+  }
+
+  throw lastError;
+}
+
 export function getElasticsearchClient(): Client {
   if (!esClient) {
     const url = process.env.ELASTICSEARCH_URL || "http://localhost:9200";
@@ -15,6 +59,8 @@ export function getElasticsearchClient(): Client {
         username,
         password,
       },
+      maxRetries: 2,
+      requestTimeout: 2500,
       // Disable SSL verification for local dev
       tls: {
         rejectUnauthorized: false,
@@ -258,13 +304,15 @@ export async function searchAlerts(
   };
 
   try {
-    const response = await client.search({
-      index: indices.join(","),
-      from,
-      size,
-      sort: [{ [sortField]: { order: sortOrder } }],
-      query,
-    });
+    const response = await withRetry(() =>
+      client.search({
+        index: indices.join(","),
+        from,
+        size,
+        sort: [{ [sortField]: { order: sortOrder } }],
+        query,
+      })
+    );
 
     const hits = response.hits.hits as unknown as ESAlertHit[];
     const total =
@@ -277,7 +325,6 @@ export async function searchAlerts(
       total,
     };
   } catch (error) {
-    console.error("Elasticsearch search error:", error);
     throw error;
   }
 }
@@ -320,32 +367,34 @@ export async function getAlertStats(
   const client = getElasticsearchClient();
 
   try {
-    const response = await client.search({
-      index: "labsoc-alerts*,suricata-*,zeek-*",
-      size: 0,
-      query: {
-        range: {
-          "@timestamp": {
-            gte: timeRange.from,
-            lte: timeRange.to,
+    const response = await withRetry(() =>
+      client.search({
+        index: "labsoc-alerts*,suricata-*,zeek-*",
+        size: 0,
+        query: {
+          range: {
+            "@timestamp": {
+              gte: timeRange.from,
+              lte: timeRange.to,
+            },
           },
         },
-      },
-      aggs: {
-        by_severity: {
-          terms: { field: "event.severity.keyword", missing: "unknown" },
-        },
-        by_source: {
-          terms: { field: "labsoc.source.keyword", missing: "unknown" },
-        },
-        by_hour: {
-          date_histogram: {
-            field: "@timestamp",
-            fixed_interval: "1h",
+        aggs: {
+          by_severity: {
+            terms: { field: "event.severity.keyword", missing: "unknown" },
+          },
+          by_source: {
+            terms: { field: "labsoc.source.keyword", missing: "unknown" },
+          },
+          by_hour: {
+            date_histogram: {
+              field: "@timestamp",
+              fixed_interval: "1h",
+            },
           },
         },
-      },
-    });
+      })
+    );
 
     const aggs = response.aggregations as {
       by_severity?: { buckets: { key: string; doc_count: number }[] };
@@ -396,7 +445,6 @@ export async function getAlertStats(
 
     return { total, bySeverity, bySource, byHour };
   } catch (error) {
-    console.error("Elasticsearch stats error:", error);
     return { total: 0, bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 }, bySource: {}, byHour: [] };
   }
 }
@@ -405,7 +453,7 @@ export async function getAlertStats(
 export async function testConnection(): Promise<boolean> {
   const client = getElasticsearchClient();
   try {
-    const response = await client.ping();
+    const response = await withRetry(() => client.ping(), 1);
     return response === true;
   } catch {
     return false;

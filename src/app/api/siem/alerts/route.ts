@@ -1,5 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchAlerts, getAlertStats, testConnection } from "@/lib/elasticsearch";
+import { searchAlerts } from "@/lib/elasticsearch";
+
+interface CachedAlertsResponse {
+  alerts: Awaited<ReturnType<typeof searchAlerts>>["alerts"];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  timeRange: {
+    from: string;
+    to: string;
+  };
+  connected: boolean;
+  degraded?: boolean;
+  message?: string;
+  cacheAgeMs?: number;
+}
+
+let lastAlertsCache: CachedAlertsResponse | null = null;
+let lastAlertsCacheAt = 0;
+let lastErrorLogAt = 0;
+
+function logSIEMErrorThrottled(context: string, error: unknown) {
+  const now = Date.now();
+  if (now - lastErrorLogAt > 30000) {
+    console.error(context, error);
+    lastErrorLogAt = now;
+  }
+}
 
 // GET /api/siem/alerts - Fetch alerts from Elasticsearch
 export async function GET(request: NextRequest) {
@@ -13,19 +43,9 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get("search") || undefined;
   const timeFrom = searchParams.get("timeFrom") || "now-24h";
   const timeTo = searchParams.get("timeTo") || "now";
+  const from = (page - 1) * limit;
 
   try {
-    // Test connection first
-    const connected = await testConnection();
-    if (!connected) {
-      return NextResponse.json(
-        { error: "Cannot connect to Elasticsearch", connected: false },
-        { status: 503 }
-      );
-    }
-
-    const from = (page - 1) * limit;
-
     const { alerts, total } = await searchAlerts({
       from,
       size: limit,
@@ -38,7 +58,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({
+    const responsePayload: CachedAlertsResponse = {
       alerts,
       pagination: {
         page,
@@ -51,16 +71,46 @@ export async function GET(request: NextRequest) {
         to: timeTo,
       },
       connected: true,
-    });
+      degraded: false,
+    };
+
+    lastAlertsCache = responsePayload;
+    lastAlertsCacheAt = Date.now();
+
+    return NextResponse.json(responsePayload);
   } catch (error) {
-    console.error("SIEM alerts error:", error);
+    logSIEMErrorThrottled("SIEM alerts error:", error);
+
+    if (lastAlertsCache) {
+      return NextResponse.json({
+        ...lastAlertsCache,
+        connected: false,
+        degraded: true,
+        message: "SIEM temporairement indisponible. Affichage des dernieres donnees en cache.",
+        cacheAgeMs: Date.now() - lastAlertsCacheAt,
+      });
+    }
+
     return NextResponse.json(
       { 
-        error: "Failed to fetch alerts from SIEM",
+        error: "SIEM temporairement indisponible",
         details: error instanceof Error ? error.message : "Unknown error",
+        alerts: [],
+        pagination: {
+          page,
+          limit,
+          total: 0,
+          totalPages: 0,
+        },
+        timeRange: {
+          from: timeFrom,
+          to: timeTo,
+        },
         connected: false,
+        degraded: true,
+        message: "SIEM indisponible. Aucune donnee en cache pour le moment.",
       },
-      { status: 500 }
+      { status: 200 }
     );
   }
 }

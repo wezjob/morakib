@@ -2,6 +2,32 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
+class APIError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "APIError";
+    this.status = status;
+  }
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs: number = 7000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new APIError("SIEM request timed out", 504);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Types for SIEM data
 export interface SIEMAlert {
   id: string;
@@ -33,6 +59,9 @@ export interface SIEMAlertsResponse {
     to: string;
   };
   connected: boolean;
+  degraded?: boolean;
+  message?: string;
+  cacheAgeMs?: number;
 }
 
 export interface SIEMStatsResponse {
@@ -45,6 +74,9 @@ export interface SIEMStatsResponse {
     to: string;
   };
   connected: boolean;
+  degraded?: boolean;
+  message?: string;
+  cacheAgeMs?: number;
 }
 
 export interface SIEMAlertsFilters {
@@ -69,10 +101,16 @@ async function fetchSIEMAlerts(filters: SIEMAlertsFilters = {}): Promise<SIEMAle
   if (filters.timeFrom) params.set("timeFrom", filters.timeFrom);
   if (filters.timeTo) params.set("timeTo", filters.timeTo);
 
-  const res = await fetch(`/api/siem/alerts?${params}`);
+  const res = await fetchWithTimeout(`/api/siem/alerts?${params}`);
   if (!res.ok) {
-    const error = await res.json();
-    throw new Error(error.error || "Failed to fetch SIEM alerts");
+    let message = "Failed to fetch SIEM alerts";
+    try {
+      const error = await res.json();
+      message = error.error || message;
+    } catch {
+      // Ignore JSON parse errors and keep default message.
+    }
+    throw new APIError(message, res.status);
   }
   return res.json();
 }
@@ -83,10 +121,16 @@ async function fetchSIEMStats(
   timeTo: string = "now"
 ): Promise<SIEMStatsResponse> {
   const params = new URLSearchParams({ timeFrom, timeTo });
-  const res = await fetch(`/api/siem/stats?${params}`);
+  const res = await fetchWithTimeout(`/api/siem/stats?${params}`);
   if (!res.ok) {
-    const error = await res.json();
-    throw new Error(error.error || "Failed to fetch SIEM stats");
+    let message = "Failed to fetch SIEM stats";
+    try {
+      const error = await res.json();
+      message = error.error || message;
+    } catch {
+      // Ignore JSON parse errors and keep default message.
+    }
+    throw new APIError(message, res.status);
   }
   return res.json();
 }
@@ -98,7 +142,12 @@ export function useSIEMAlerts(filters: SIEMAlertsFilters = {}, refreshInterval: 
     queryFn: () => fetchSIEMAlerts(filters),
     refetchInterval: refreshInterval, // Auto-refresh every 30 seconds
     staleTime: 10000, // Consider data stale after 10 seconds
-    retry: 2,
+    retry: (failureCount, error) => {
+      if (error instanceof APIError && (error.status === 503 || error.status === 504)) {
+        return false;
+      }
+      return failureCount < 1;
+    },
   });
 }
 
@@ -113,7 +162,12 @@ export function useSIEMStats(
     queryFn: () => fetchSIEMStats(timeFrom, timeTo),
     refetchInterval: refreshInterval, // Auto-refresh every minute
     staleTime: 30000, // Consider data stale after 30 seconds
-    retry: 2,
+    retry: (failureCount, error) => {
+      if (error instanceof APIError && (error.status === 503 || error.status === 504)) {
+        return false;
+      }
+      return failureCount < 1;
+    },
   });
 }
 
