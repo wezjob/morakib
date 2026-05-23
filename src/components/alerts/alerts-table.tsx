@@ -5,12 +5,17 @@ import Link from "next/link";
 import { cn, formatRelativeTime, severityColor, statusColor } from "@/lib/utils";
 import { Eye, UserPlus, MoreHorizontal, Loader2 } from "lucide-react";
 import { useAlerts } from "@/hooks/use-alerts";
+import type { AlertStatus } from "@/types";
 
-export function AlertsTable() {
+interface AlertsTableProps {
+  presetStatus?: AlertStatus;
+}
+
+export function AlertsTable({ presetStatus }: AlertsTableProps) {
   const [page, setPage] = useState(1);
   const limit = 10;
   
-  const { data, isLoading, error } = useAlerts({ page, limit });
+  const { data, isLoading, error } = useAlerts({ page, limit, status: presetStatus });
 
   if (isLoading) {
     return (

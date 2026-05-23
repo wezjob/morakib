@@ -106,11 +106,71 @@ interface IRISExportResult {
   iocs_added?: number;
 }
 
+interface EvidencePayload {
+  alertId: string;
+  title: string;
+  description: string;
+  artifactType?: string;
+  artifactValue?: string;
+  file?: File | null;
+}
+
+interface CloseAlertPayload {
+  alertId: string;
+  resolutionSummary: string;
+}
+
+interface ReopenAlertPayload {
+  alertId: string;
+  reason: string;
+}
+
 async function exportToIRIS(alertId: string): Promise<IRISExportResult> {
   const res = await fetch(`${API_BASE}/${alertId}/export-iris`, {
     method: "POST",
   });
   if (!res.ok) throw new Error("Failed to export to IRIS");
+  return res.json();
+}
+
+async function addEvidence(payload: EvidencePayload): Promise<unknown> {
+  const hasFile = !!payload.file;
+  const requestBody = hasFile ? new FormData() : JSON.stringify(payload);
+
+  if (hasFile && requestBody instanceof FormData) {
+    requestBody.append("title", payload.title);
+    requestBody.append("description", payload.description);
+    requestBody.append("artifactType", payload.artifactType || "log");
+    requestBody.append("artifactValue", payload.artifactValue || "");
+    requestBody.append("file", payload.file as File);
+  }
+
+  const res = await fetch(`${API_BASE}/${payload.alertId}/evidence`, {
+    method: "POST",
+    headers: hasFile ? undefined : { "Content-Type": "application/json" },
+    body: requestBody,
+  });
+  if (!res.ok) throw new Error("Failed to add evidence");
+  return res.json();
+}
+
+async function closeAlert(payload: CloseAlertPayload): Promise<unknown> {
+  const res = await fetch(`${API_BASE}/${payload.alertId}/close`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Failed to close alert");
+  return res.json();
+}
+
+async function reopenAlert(payload: ReopenAlertPayload): Promise<unknown> {
+  const res = await fetch(`${API_BASE}/${payload.alertId}/reopen`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Failed to reopen alert");
   return res.json();
 }
 
@@ -176,5 +236,40 @@ export function useSubmitInvestigation() {
 export function useExportToIRIS() {
   return useMutation({
     mutationFn: exportToIRIS,
+  });
+}
+
+export function useAddEvidence() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: addEvidence,
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["alert", variables.alertId] });
+    },
+  });
+}
+
+export function useCloseAlert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: closeAlert,
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["alert", variables.alertId] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+}
+
+export function useReopenAlert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: reopenAlert,
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["alert", variables.alertId] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
   });
 }

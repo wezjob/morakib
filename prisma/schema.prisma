@@ -68,6 +68,14 @@ enum TaskStatus {
   CANCELLED
 }
 
+enum SOPInstanceStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  VALIDATED
+  ARCHIVED
+}
+
 enum TaskType {
   INVESTIGATE_ALERT
   REVIEW_SOP
@@ -103,6 +111,16 @@ model User {
   metrics         AnalystMetric[]
   badges          UserBadge[]
   sopProgress     SOPProgress[]
+  
+  // SOP Instance relations
+  createdSOPInstances   SOPInstance[] @relation("CreatedSOPInstances")
+  mentoredSOPInstances  SOPInstance[] @relation("MentoredSOPs")
+  validatedSOPInstances SOPInstance[] @relation("ValidatedSOPInstances")
+  sopInstanceHistory    SOPInstanceHistory[] @relation("SOPInstanceHistoryEntries")
+  
+  // Guide Progress relations
+  guideProgress         GuideProgress[]
+  validatedGuides       GuideProgress[] @relation("ValidatedGuides")
   
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
@@ -251,9 +269,22 @@ model SOP {
   checklist       Json?
   examples        Json?
   
+  // MITRE ATT&CK Framework
+  mitreTactics     String[]  @default([]) @map("mitre_tactics")     // TA0001, TA0002, etc.
+  mitreTechniques  String[]  @default([]) @map("mitre_techniques")  // T1566, T1059, etc.
+  
+  // Practical Guide
+  elkQueries       Json?     @map("elk_queries")      // Array of {description, query}
+  procedures       Json?     @map("procedures")       // Array of step-by-step procedures
+  detection        Json?     @map("detection")        // Detection methods
+  mitigation       Json?     @map("mitigation")       // Mitigation strategies
+  dataSources      String[]  @default([]) @map("data_sources") // Required data sources
+  
   // Metadata
   version         Int       @default(1)
   status          SOPStatus @default(DRAFT)
+  severity        String?   @default("MEDIUM")        // LOW, MEDIUM, HIGH, CRITICAL
+  estimatedTime   String?   @map("estimated_time")    // e.g., "30 min", "1-2 hours"
   
   // Author
   createdById     String    @map("created_by_id")
@@ -340,6 +371,54 @@ model UserBadge {
 }
 
 // ============================================
+// Guide Progress Tracking - Suivi des TP guidés
+// ============================================
+model GuideProgress {
+  id                   String    @id @default(cuid())
+  userId               String    @map("user_id")
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guideId              String    @map("guide_id")
+  
+  // Progress state
+  currentStep          Int       @default(1) @map("current_step")
+  totalSteps           Int       @map("total_steps")
+  completedSteps       Int[]     @default([]) @map("completed_steps")
+  completionPercentage Int       @default(0) @map("completion_percentage")
+  
+  // Checklist state per step
+  checklistState       Json      @default("{}") @map("checklist_state")
+  
+  // Quiz/Exercise results
+  quizResults          Json?     @map("quiz_results")
+  exerciseResults      Json?     @map("exercise_results")
+  
+  // Time tracking
+  startedAt            DateTime  @default(now()) @map("started_at")
+  completedAt          DateTime? @map("completed_at")
+  totalTimeSeconds     Int       @default(0) @map("total_time_seconds")
+  
+  // Status
+  completed            Boolean   @default(false)
+  score                Int?      // Final score if guide has quiz
+  
+  // Validation by mentor/lead
+  validatedById        String?   @map("validated_by_id")
+  validatedBy          User?     @relation("ValidatedGuides", fields: [validatedById], references: [id])
+  validatedAt          DateTime? @map("validated_at")
+  validationNotes      String?   @map("validation_notes") @db.Text
+  
+  // Timestamps
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  
+  @@unique([userId, guideId])
+  @@index([userId])
+  @@index([guideId])
+  @@index([completed])
+  @@map("guide_progress")
+}
+
+// ============================================
 // SOP Progress Tracking
 // ============================================
 model SOPProgress {
@@ -368,3 +447,106 @@ model SOPProgress {
   @@index([sopSlug])
   @@map("sop_progress")
 }
+
+// ============================================
+// SOP Instance - Suivi dynamique des SOPs remplis
+// ============================================
+model SOPInstance {
+  id                String            @id @default(cuid())
+  
+  // SOP Template reference
+  sopSlug           String            @map("sop_slug")
+  sopTitle          String            @map("sop_title")
+  sopVersion        String            @default("1.0") @map("sop_version")
+  
+  // Instance metadata
+  title             String            // Ex: "Onboarding - Ahmed Bennani"
+  reference         String            @unique // Ex: "SOP-OB-2026-001"
+  
+  // Subject info (la personne concernée par le SOP)
+  subjectName       String            @map("subject_name")
+  subjectEmail      String?           @map("subject_email")
+  subjectRole       String?           @map("subject_role")
+  subjectInfo       Json?             @map("subject_info") // Additional subject metadata
+  
+  // Mentor/Completer info
+  mentorId          String?           @map("mentor_id")
+  mentor            User?             @relation("MentoredSOPs", fields: [mentorId], references: [id])
+  
+  // Creator
+  createdById       String            @map("created_by_id")
+  createdBy         User              @relation("CreatedSOPInstances", fields: [createdById], references: [id])
+  
+  // Status & Progress
+  status            SOPInstanceStatus @default(DRAFT)
+  currentStep       Int               @default(1) @map("current_step")
+  totalSteps        Int               @default(1) @map("total_steps")
+  completionPercent Int               @default(0) @map("completion_percent")
+  
+  // Form data (all filled fields)
+  formData          Json              @default("{}") @map("form_data")
+  checklistState    Json              @default("{}") @map("checklist_state")
+  notes             String?           @db.Text
+  
+  // Validation
+  validatedById     String?           @map("validated_by_id")
+  validatedBy       User?             @relation("ValidatedSOPInstances", fields: [validatedById], references: [id])
+  validatedAt       DateTime?         @map("validated_at")
+  validationNotes   String?           @map("validation_notes") @db.Text
+  
+  // Version control
+  version           Int               @default(1)
+  
+  // Dates
+  startedAt         DateTime?         @map("started_at")
+  completedAt       DateTime?         @map("completed_at")
+  dueDate           DateTime?         @map("due_date")
+  
+  // Relations
+  history           SOPInstanceHistory[]
+  
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  
+  @@index([sopSlug])
+  @@index([status])
+  @@index([mentorId])
+  @@index([createdById])
+  @@index([subjectName])
+  @@map("sop_instances")
+}
+
+// ============================================
+// SOP Instance History - Historique des versions
+// ============================================
+model SOPInstanceHistory {
+  id              String      @id @default(cuid())
+  
+  instanceId      String      @map("instance_id")
+  instance        SOPInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  
+  // Version info
+  version         Int
+  action          String      // "created", "updated", "completed", "validated", "step_completed"
+  description     String?     // Human readable description of change
+  
+  // Who made the change
+  userId          String      @map("user_id")
+  user            User        @relation("SOPInstanceHistoryEntries", fields: [userId], references: [id])
+  
+  // Snapshot of data at this version
+  formDataSnapshot   Json?    @map("form_data_snapshot")
+  checklistSnapshot  Json?    @map("checklist_snapshot")
+  statusBefore       String?  @map("status_before")
+  statusAfter        String?  @map("status_after")
+  
+  // Changes made
+  changes         Json?       // Detailed changes: {field: {old: x, new: y}}
+  
+  createdAt       DateTime    @default(now()) @map("created_at")
+  
+  @@index([instanceId])
+  @@index([version])
+  @@map("sop_instance_history")
+}
+

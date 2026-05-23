@@ -1,4 +1,4 @@
-import { PrismaClient } from "@/generated/prisma";
+import { Prisma, PrismaClient } from "@/generated/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
@@ -7,6 +7,12 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
+  const enableQueryLogs = process.env.PRISMA_DEBUG_QUERIES === "true";
+  const devLogs: Prisma.LogLevel[] = enableQueryLogs
+    ? ["query", "error", "warn"]
+    : ["error", "warn"];
+  const prodLogs: Prisma.LogLevel[] = ["error"];
+
   // In production or when DATABASE_URL is set, use pg adapter
   if (process.env.DATABASE_URL) {
     const dbUrl = process.env.DATABASE_URL;
@@ -22,13 +28,13 @@ function createPrismaClient() {
     const adapter = new PrismaPg(pool);
     return new PrismaClient({
       adapter,
-      log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+      log: process.env.NODE_ENV === "development" ? devLogs : prodLogs,
     });
   }
   
   // Fallback for build time (no DB connection needed)
   return new PrismaClient({
-    log: ["error"],
+    log: prodLogs,
   });
 }
 

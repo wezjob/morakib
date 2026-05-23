@@ -1,6 +1,33 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+function buildFallbackStats() {
+  return {
+    alerts: {
+      total: 0,
+      new: 0,
+      inProgress: 0,
+      escalated: 0,
+      closed: 0,
+      critical: 0,
+      high: 0,
+      today: 0,
+      yesterday: 0,
+      trend: 0,
+    },
+    investigations: {
+      thisWeek: 0,
+    },
+    sops: {
+      total: 0,
+      published: 0,
+    },
+    recentAlerts: [],
+    leaderboard: [],
+    degraded: true,
+  };
+}
+
 // GET /api/stats - Get dashboard statistics
 export async function GET() {
   try {
@@ -111,6 +138,7 @@ export async function GET() {
         critical: criticalAlerts,
         high: highAlerts,
         today: alertsToday,
+        yesterday: alertsYesterday,
         trend: alertTrend,
       },
       investigations: {
@@ -122,12 +150,11 @@ export async function GET() {
       },
       recentAlerts,
       leaderboard: leaderboardWithNames,
+      degraded: false,
     });
   } catch (error) {
     console.error("Error fetching stats:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch stats" },
-      { status: 500 }
-    );
+    // Keep dashboard usable when database is temporarily unavailable.
+    return NextResponse.json(buildFallbackStats(), { status: 200 });
   }
 }

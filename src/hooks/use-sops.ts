@@ -14,6 +14,15 @@ interface SOP {
   checklist?: string[];
   examples?: unknown[];
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+  mitreTactics?: string[];
+  mitreTechniques?: string[];
+  elkQueries?: { description: string; query: string }[];
+  procedures?: string[];
+  detection?: string[];
+  mitigation?: string[];
+  dataSources?: string[];
+  severity?: string;
+  estimatedTime?: string;
   createdById: string;
   createdBy?: {
     id: string;
@@ -26,6 +35,7 @@ interface SOP {
 
 interface SOPsFilters {
   category?: string;
+  excludeCategory?: string;
   status?: string;
   alertType?: string;
   search?: string;
@@ -62,11 +72,13 @@ async function createSOP(data: Partial<SOP>): Promise<SOP> {
 }
 
 // Update SOP
-async function updateSOP({ id, ...data }: Partial<SOP> & { id: string }): Promise<SOP> {
-  const res = await fetch(`${API_BASE}/${id}`, {
+async function updateSOP({ id, slug, ...data }: Partial<SOP> & { id: string }): Promise<SOP> {
+  // Use slug if available, otherwise fall back to id
+  const identifier = slug || id;
+  const res = await fetch(`${API_BASE}/${identifier}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, slug }),
   });
   if (!res.ok) throw new Error("Failed to update SOP");
   return res.json();

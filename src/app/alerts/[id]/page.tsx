@@ -1,75 +1,47 @@
-import { notFound } from "next/navigation";
-import { AlertDetailView } from "@/components/alerts/alert-detail-view";
+"use client";
 
-// Demo data - will be replaced with API call
-const alertsData: Record<string, any> = {
-  "1": {
-    id: "1",
-    title: "SSH Brute Force Attempt",
-    description: "Multiples tentatives de connexion SSH échouées détectées depuis la même IP source.",
-    severity: "HIGH",
-    status: "NEW",
-    source: "SURICATA",
-    sourceIp: "192.168.1.100",
-    destIp: "10.0.0.50",
-    sourcePort: 54321,
-    destPort: 22,
-    protocol: "TCP",
-    ruleName: "LABSOC SSH Brute Force Attempt",
-    ruleId: "1000001",
-    detectedAt: new Date(Date.now() - 5 * 60 * 1000),
-    rawLog: {
-      timestamp: "2026-02-27T14:32:15.000Z",
-      flow_id: 1234567890,
-      src_ip: "192.168.1.100",
-      src_port: 54321,
-      dest_ip: "10.0.0.50",
-      dest_port: 22,
-      proto: "TCP",
-      alert: {
-        signature: "LABSOC SSH Brute Force Attempt",
-        signature_id: 1000001,
-        severity: 2,
-        category: "Attempted Administrator Privilege Gain",
-      },
-      ssh: {
-        client: {
-          software_version: "OpenSSH_8.9",
-          proto_version: "2.0",
-        },
-      },
-    },
-    enrichmentData: {
-      abuseipdb: {
-        score: 85,
-        country: "CN",
-        isp: "China Telecom",
-        reports: 127,
-      },
-      virustotal: {
-        malicious: 12,
-        suspicious: 5,
-        harmless: 45,
-      },
-    },
-    suggestedSOP: {
-      id: "1",
-      title: "SSH Brute Force Response",
-      code: "SOP-AUTH-001",
-    },
-  },
-};
+import { AlertDetailView } from "@/components/alerts/alert-detail-view";
+import { useAlert } from "@/hooks/use-alerts";
+import { Loader2 } from "lucide-react";
 
 export default function AlertDetailPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const alert = alertsData[params.id];
+  const { data: alert, isLoading, error } = useAlert(params.id);
 
-  if (!alert) {
-    notFound();
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
   }
 
-  return <AlertDetailView alert={alert} />;
+  if (error || !alert) {
+    return (
+      <div className="rounded-xl border border-red-800/50 bg-red-900/20 p-6 text-center">
+        <p className="text-red-400">Incident introuvable ou inaccessible.</p>
+      </div>
+    );
+  }
+
+  const normalizedAlert = {
+    ...alert,
+    description: alert.description || "Aucune description",
+    sourceIp: alert.sourceIp || "N/A",
+    destIp: alert.destIp || "N/A",
+    sourcePort: alert.sourcePort || 0,
+    destPort: alert.destPort || 0,
+    protocol: alert.protocol || "N/A",
+    ruleName: alert.ruleName || "N/A",
+    ruleId: alert.ruleId || "N/A",
+    detectedAt: new Date(alert.detectedAt),
+    rawLog: (alert.rawLog as Record<string, unknown>) || {},
+    enrichmentData: (alert.enrichmentData as Record<string, unknown>) || {},
+    suggestedSOP: undefined,
+  };
+
+  return <AlertDetailView alert={normalizedAlert as any} />;
 }

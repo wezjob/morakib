@@ -15,10 +15,38 @@ import {
   User,
   Send,
   Loader2,
+  Plus,
+  CheckCheck,
+  RotateCcw,
 } from "lucide-react";
 import { cn, formatDate, severityColor, statusColor } from "@/lib/utils";
 import { useState } from "react";
-import { useExportToIRIS, useSubmitInvestigation } from "@/hooks/use-alerts";
+import {
+  useAddEvidence,
+  useCloseAlert,
+  useExportToIRIS,
+  useReopenAlert,
+  useSubmitInvestigation,
+} from "@/hooks/use-alerts";
+
+type EvidenceItem = {
+  id: string;
+  title: string;
+  description: string;
+  artifactType: string;
+  artifactValue: string;
+  createdAt: string;
+  fileName?: string;
+  filePath?: string;
+  fileSize?: number;
+};
+
+type ActionHistoryItem = {
+  id: string;
+  action: "EVIDENCE_ADDED" | "INCIDENT_CLOSED" | "INCIDENT_REOPENED";
+  details: string;
+  createdAt: string;
+};
 
 interface AlertDetailViewProps {
   alert: {
@@ -49,8 +77,14 @@ interface AlertDetailViewProps {
         suspicious: number;
         harmless: number;
       };
+      evidenceItems?: EvidenceItem[];
+      actionHistory?: ActionHistoryItem[];
+      closure?: {
+        summary: string;
+        closedAt: string;
+      };
     };
-    suggestedSOP: {
+    suggestedSOP?: {
       id: string;
       title: string;
       code: string;
@@ -68,18 +102,37 @@ const checklist = [
 ];
 
 export function AlertDetailView({ alert }: AlertDetailViewProps) {
+  const enrichment = alert.enrichmentData || {};
   const [checklistState, setChecklistState] = useState<Record<string, boolean>>({});
   const [findings, setFindings] = useState("");
   const [conclusion, setConclusion] = useState<string | null>(null);
+  const [currentStatus, setCurrentStatus] = useState(alert.status);
+  const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>(
+    Array.isArray(enrichment.evidenceItems) ? enrichment.evidenceItems : []
+  );
+  const [evidenceTitle, setEvidenceTitle] = useState("");
+  const [evidenceDescription, setEvidenceDescription] = useState("");
+  const [evidenceType, setEvidenceType] = useState("log");
+  const [evidenceValue, setEvidenceValue] = useState("");
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [closeSummary, setCloseSummary] = useState("");
+  const [reopenReason, setReopenReason] = useState("");
+  const [actionHistory, setActionHistory] = useState<ActionHistoryItem[]>(
+    Array.isArray(enrichment.actionHistory) ? enrichment.actionHistory : []
+  );
   const [irisResult, setIrisResult] = useState<{
     success: boolean;
     mock?: boolean;
     case_id?: number;
     case_soc_id?: string;
   } | null>(null);
+  const [actionResult, setActionResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
   
   const exportToIRIS = useExportToIRIS();
   const submitInvestigation = useSubmitInvestigation();
+  const addEvidence = useAddEvidence();
+  const closeAlert = useCloseAlert();
+  const reopenAlert = useReopenAlert();
 
   const handleExportToIRIS = async () => {
     try {
@@ -98,6 +151,101 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
 
   const toggleCheckItem = (id: string) => {
     setChecklistState((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleAddEvidence = async () => {
+    if (!evidenceTitle.trim() || !evidenceDescription.trim()) {
+      setActionResult({ type: "error", message: "Titre et description de preuve requis." });
+      return;
+    }
+
+    try {
+      const payload = (await addEvidence.mutateAsync({
+        alertId: alert.id,
+        title: evidenceTitle,
+        description: evidenceDescription,
+        artifactType: evidenceType,
+        artifactValue: evidenceValue,
+        file: evidenceFile,
+      })) as {
+        evidence?: EvidenceItem;
+        alert?: { status?: string; enrichmentData?: { actionHistory?: ActionHistoryItem[] } };
+      };
+
+      if (payload?.evidence) {
+        setEvidenceItems((prev) => [...prev, payload.evidence as EvidenceItem]);
+      }
+      if (payload?.alert?.status) {
+        setCurrentStatus(payload.alert.status);
+      }
+      if (Array.isArray(payload?.alert?.enrichmentData?.actionHistory)) {
+        setActionHistory(payload.alert.enrichmentData.actionHistory);
+      }
+
+      setEvidenceTitle("");
+      setEvidenceDescription("");
+      setEvidenceType("log");
+      setEvidenceValue("");
+      setEvidenceFile(null);
+      setActionResult({ type: "success", message: "Preuve ajoutée avec succès." });
+    } catch (error) {
+      console.error("Failed to add evidence:", error);
+      setActionResult({ type: "error", message: "Impossible d'ajouter la preuve." });
+    }
+  };
+
+  const handleCloseIncident = async () => {
+    if (!closeSummary.trim()) {
+      setActionResult({ type: "error", message: "Le résumé de clôture est obligatoire." });
+      return;
+    }
+
+    try {
+      const payload = (await closeAlert.mutateAsync({
+        alertId: alert.id,
+        resolutionSummary: closeSummary,
+      })) as {
+        alert?: { status?: string; enrichmentData?: { actionHistory?: ActionHistoryItem[] } };
+      };
+
+      if (payload?.alert?.status) {
+        setCurrentStatus(payload.alert.status);
+      }
+      if (Array.isArray(payload?.alert?.enrichmentData?.actionHistory)) {
+        setActionHistory(payload.alert.enrichmentData.actionHistory);
+      }
+      setActionResult({ type: "success", message: "Incident clôturé." });
+    } catch (error) {
+      console.error("Failed to close alert:", error);
+      setActionResult({ type: "error", message: "Impossible de clôturer l'incident." });
+    }
+  };
+
+  const handleReopenIncident = async () => {
+    if (!reopenReason.trim()) {
+      setActionResult({ type: "error", message: "Le motif de réouverture est obligatoire." });
+      return;
+    }
+
+    try {
+      const payload = (await reopenAlert.mutateAsync({
+        alertId: alert.id,
+        reason: reopenReason,
+      })) as {
+        alert?: { status?: string; enrichmentData?: { actionHistory?: ActionHistoryItem[] } };
+      };
+
+      if (payload?.alert?.status) {
+        setCurrentStatus(payload.alert.status);
+      }
+      if (Array.isArray(payload?.alert?.enrichmentData?.actionHistory)) {
+        setActionHistory(payload.alert.enrichmentData.actionHistory);
+      }
+      setActionResult({ type: "success", message: "Incident réouvert." });
+    } catch (error) {
+      console.error("Failed to reopen alert:", error);
+      setActionResult({ type: "error", message: "Impossible de réouvrir l'incident." });
+    }
   };
 
   const completedItems = Object.values(checklistState).filter(Boolean).length;
@@ -128,16 +276,23 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
               <span
                 className={cn(
                   "rounded-full px-2.5 py-0.5 text-xs font-medium",
-                  statusColor(alert.status)
+                  statusColor(currentStatus)
                 )}
               >
-                {alert.status}
+                {currentStatus}
               </span>
             </div>
             <p className="mt-1 text-sm text-slate-400">{alert.description}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => document.getElementById("evidence-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="flex items-center gap-2 rounded-lg border border-blue-700 bg-blue-900/40 px-4 py-2 text-sm font-medium text-blue-300 hover:bg-blue-800/40"
+          >
+            <Plus className="h-4 w-4" />
+            Nouvelle preuve
+          </button>
           <button
             onClick={handleExportToIRIS}
             disabled={exportToIRIS.isPending}
@@ -153,11 +308,37 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
           <button className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
             Assigner
           </button>
-          <button className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500">
-            Escalader
+          <button
+            onClick={handleCloseIncident}
+            disabled={closeAlert.isPending || currentStatus === "RESOLVED"}
+            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {closeAlert.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4" />}
+            Clôturer
+          </button>
+          <button
+            onClick={handleReopenIncident}
+            disabled={reopenAlert.isPending || currentStatus !== "RESOLVED"}
+            className="flex items-center gap-2 rounded-lg border border-amber-700 bg-amber-900/40 px-4 py-2 text-sm font-medium text-amber-200 hover:bg-amber-800/40 disabled:opacity-50"
+          >
+            {reopenAlert.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+            Réouvrir
           </button>
         </div>
       </div>
+
+      {actionResult && (
+        <div
+          className={cn(
+            "rounded-lg border px-4 py-3 text-sm",
+            actionResult.type === "success"
+              ? "border-emerald-800/60 bg-emerald-900/20 text-emerald-300"
+              : "border-red-800/60 bg-red-900/20 text-red-300"
+          )}
+        >
+          {actionResult.message}
+        </div>
+      )}
 
       {/* IRIS Export Result */}
       {irisResult && (
@@ -369,7 +550,130 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
 
         {/* Right Column - Enrichment & SOP */}
         <div className="space-y-6">
+          {/* Incident Actions */}
+          <div id="evidence-panel" className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-6">
+            <h2 className="text-lg font-semibold text-white mb-4">Actions incident</h2>
+
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-blue-200">Ajouter une nouvelle preuve</p>
+              <input
+                value={evidenceTitle}
+                onChange={(e) => setEvidenceTitle(e.target.value)}
+                placeholder="Titre de la preuve (ex: Log SSH suspect)"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+              />
+              <textarea
+                value={evidenceDescription}
+                onChange={(e) => setEvidenceDescription(e.target.value)}
+                placeholder="Description et contexte de la preuve"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                rows={3}
+              />
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <input
+                  value={evidenceType}
+                  onChange={(e) => setEvidenceType(e.target.value)}
+                  placeholder="Type (log, fichier, hash, capture...)"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                />
+                <input
+                  value={evidenceValue}
+                  onChange={(e) => setEvidenceValue(e.target.value)}
+                  placeholder="Valeur / artefact"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              <input
+                type="file"
+                onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 file:mr-3 file:rounded file:border-0 file:bg-slate-700 file:px-3 file:py-1 file:text-xs file:text-white"
+              />
+              <div className="flex justify-end">
+                <button
+                  onClick={handleAddEvidence}
+                  disabled={addEvidence.isPending}
+                  className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {addEvidence.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  Ajouter la preuve
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 border-t border-blue-900/60 pt-4">
+              <p className="text-sm font-medium text-blue-200 mb-3">Clôture incident</p>
+              <textarea
+                value={closeSummary}
+                onChange={(e) => setCloseSummary(e.target.value)}
+                placeholder="Résumé de clôture (actions effectuées, impact, recommandations)"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                rows={3}
+              />
+
+              <p className="text-sm font-medium text-amber-200 mt-4 mb-2">Réouverture incident</p>
+              <textarea
+                value={reopenReason}
+                onChange={(e) => setReopenReason(e.target.value)}
+                placeholder="Motif de réouverture (nouvelle preuve, faux diagnostic, etc.)"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                rows={2}
+              />
+            </div>
+          </div>
+
+          {/* Evidence List */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
+            <h2 className="text-lg font-semibold text-white mb-4">Preuves collectées</h2>
+            {evidenceItems.length === 0 ? (
+              <p className="text-sm text-slate-400">Aucune preuve enregistrée pour cet incident.</p>
+            ) : (
+              <div className="space-y-3">
+                {evidenceItems.map((item) => (
+                  <div key={item.id} className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-white">{item.title}</p>
+                      <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-300">{item.artifactType}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-300">{item.description}</p>
+                    {item.artifactValue ? <p className="mt-1 text-xs font-mono text-slate-400">{item.artifactValue}</p> : null}
+                    {item.filePath ? (
+                      <a
+                        href={item.filePath}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 inline-block text-xs text-blue-300 hover:text-blue-200"
+                      >
+                        Fichier: {item.fileName || "télécharger"}
+                      </a>
+                    ) : null}
+                    <p className="mt-1 text-xs text-slate-500">Ajoutée le {formatDate(new Date(item.createdAt))}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Action History */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
+            <h2 className="text-lg font-semibold text-white mb-4">Historique des actions</h2>
+            {actionHistory.length === 0 ? (
+              <p className="text-sm text-slate-400">Aucune action enregistrée.</p>
+            ) : (
+              <ol className="space-y-3">
+                {[...actionHistory]
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                  .map((entry) => (
+                    <li key={entry.id} className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+                      <p className="text-sm text-white">{entry.details}</p>
+                      <p className="mt-1 text-xs text-slate-500">{formatDate(new Date(entry.createdAt))}</p>
+                    </li>
+                  ))}
+              </ol>
+            )}
+          </div>
+
           {/* Suggested SOP */}
+          {alert.suggestedSOP ? (
           <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-6">
             <div className="flex items-center gap-2 mb-4">
               <FileText className="h-5 w-5 text-emerald-500" />
@@ -387,9 +691,10 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
               Ouvrir le SOP
             </Link>
           </div>
+          ) : null}
 
           {/* Enrichment - AbuseIPDB */}
-          {alert.enrichmentData.abuseipdb && (
+          {enrichment.abuseipdb && (
             <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Globe className="h-5 w-5 text-orange-500" />
@@ -401,32 +706,32 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
                   <span
                     className={cn(
                       "text-sm font-bold",
-                      alert.enrichmentData.abuseipdb.score > 70
+                      enrichment.abuseipdb.score > 70
                         ? "text-red-400"
-                        : alert.enrichmentData.abuseipdb.score > 30
+                        : enrichment.abuseipdb.score > 30
                         ? "text-yellow-400"
                         : "text-green-400"
                     )}
                   >
-                    {alert.enrichmentData.abuseipdb.score}%
+                    {enrichment.abuseipdb.score}%
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-400">Pays</span>
                   <span className="text-sm text-white">
-                    {alert.enrichmentData.abuseipdb.country}
+                    {enrichment.abuseipdb.country}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-400">ISP</span>
                   <span className="text-sm text-white">
-                    {alert.enrichmentData.abuseipdb.isp}
+                    {enrichment.abuseipdb.isp}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-400">Signalements</span>
                   <span className="text-sm text-red-400">
-                    {alert.enrichmentData.abuseipdb.reports}
+                    {enrichment.abuseipdb.reports}
                   </span>
                 </div>
               </div>
@@ -434,7 +739,7 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
           )}
 
           {/* Enrichment - VirusTotal */}
-          {alert.enrichmentData.virustotal && (
+          {enrichment.virustotal && (
             <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Shield className="h-5 w-5 text-blue-500" />
@@ -443,19 +748,19 @@ export function AlertDetailView({ alert }: AlertDetailViewProps) {
               <div className="flex gap-2">
                 <div className="flex-1 rounded-lg bg-red-500/10 p-3 text-center">
                   <p className="text-lg font-bold text-red-400">
-                    {alert.enrichmentData.virustotal.malicious}
+                    {enrichment.virustotal.malicious}
                   </p>
                   <p className="text-xs text-slate-400">Malicious</p>
                 </div>
                 <div className="flex-1 rounded-lg bg-yellow-500/10 p-3 text-center">
                   <p className="text-lg font-bold text-yellow-400">
-                    {alert.enrichmentData.virustotal.suspicious}
+                    {enrichment.virustotal.suspicious}
                   </p>
                   <p className="text-xs text-slate-400">Suspicious</p>
                 </div>
                 <div className="flex-1 rounded-lg bg-green-500/10 p-3 text-center">
                   <p className="text-lg font-bold text-green-400">
-                    {alert.enrichmentData.virustotal.harmless}
+                    {enrichment.virustotal.harmless}
                   </p>
                   <p className="text-xs text-slate-400">Clean</p>
                 </div>

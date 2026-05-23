@@ -1562,6 +1562,8 @@ export const sopReporting: SOPTemplate = {
 // ============================================
 // EXPORT ALL SOPs
 // ============================================
+import { allMitreSOPs, getMitreSOPByTechnique, getMitreSOPByTactic } from "./sops-mitre";
+
 export const allSOPs: SOPTemplate[] = [
   sopOnboarding,
   sopShiftHandover,
@@ -1570,8 +1572,11 @@ export const allSOPs: SOPTemplate[] = [
   sopThreatHunting,
   sopVulnerabilityManagement,
   sopEscalation,
-  sopReporting
+  sopReporting,
+  ...allMitreSOPs
 ];
+
+export { getMitreSOPByTechnique, getMitreSOPByTactic };
 
 export function getSOPBySlug(slug: string): SOPTemplate | undefined {
   return allSOPs.find(sop => sop.slug === slug);

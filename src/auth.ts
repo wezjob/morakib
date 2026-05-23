@@ -3,6 +3,9 @@ import Keycloak from "next-auth/providers/keycloak";
 import Credentials from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
 
+const DEMO_LOGIN_EMAIL = process.env.MORAKIB_LOGIN_EMAIL || "admin@morakib.local";
+const DEMO_LOGIN_PASSWORD = process.env.MORAKIB_LOGIN_PASSWORD || "Morakib@2026!";
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   // Using JWT strategy (no adapter needed)
   providers: [
@@ -20,28 +23,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        // Demo mode - accept any login with valid email format
+        // Demo mode - accept only configured fallback credentials.
         if (process.env.NODE_ENV === "development" || process.env.DEMO_MODE === "true") {
           const email = credentials?.email as string;
-          if (email && email.includes("@")) {
-            // Check if user exists or create demo user
-            let user = await db.user.findUnique({ where: { email } });
-            
-            if (!user) {
-              user = await db.user.create({
-                data: {
-                  email,
-                  name: email.split("@")[0],
-                  role: "ANALYST_JUNIOR",
-                },
-              });
-            }
-            
+          const password = credentials?.password as string;
+
+          if (email === DEMO_LOGIN_EMAIL && password === DEMO_LOGIN_PASSWORD) {
             return {
-              id: user.id,
-              email: user.email,
-              name: user.name,
-              image: user.avatarUrl,
+              id: `demo-${DEMO_LOGIN_EMAIL}`,
+              email: DEMO_LOGIN_EMAIL,
+              name: "Admin Morakib",
+              image: null,
+              role: "ADMIN",
             };
           }
         }
@@ -56,13 +49,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
-        // Fetch role from database
-        const dbUser = await db.user.findUnique({
-          where: { id: user.id },
-          select: { role: true, teamId: true },
-        });
-        token.role = dbUser?.role || "ANALYST_JUNIOR";
-        token.teamId = dbUser?.teamId ?? undefined;
+        const userRole = (user as { role?: string }).role;
+        if (userRole) {
+          token.role = userRole;
+        }
+
+        // Fetch role from database when available, but do not block login if DB is down.
+        try {
+          const dbUser = await db.user.findUnique({
+            where: { id: user.id },
+            select: { role: true, teamId: true },
+          });
+          token.role = dbUser?.role || token.role || "ANALYST_JUNIOR";
+          token.teamId = dbUser?.teamId ?? undefined;
+        } catch {
+          token.role = token.role || "ADMIN";
+        }
       }
       // Store Keycloak tokens for logout
       if (account?.provider === "keycloak") {

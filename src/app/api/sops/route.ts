@@ -9,19 +9,24 @@ export async function GET(request: NextRequest) {
     
     // Filters
     const category = searchParams.get("category");
+    const excludeCategory = searchParams.get("excludeCategory");
     const status = searchParams.get("status") as SOPStatus | null;
     const search = searchParams.get("search");
     
     // Build where clause
     const where: Record<string, unknown> = {};
     
-    if (category) where.category = category;
+    if (category) {
+      where.category = category;
+    } else if (excludeCategory) {
+      where.NOT = { category: excludeCategory };
+    }
     if (status) where.status = status;
     if (search) {
       where.OR = [
         { title: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
-        { tags: { has: search } },
+        { contentMarkdown: { contains: search, mode: "insensitive" } },
+        { category: { contains: search, mode: "insensitive" } },
       ];
     }
     
@@ -55,6 +60,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+
+    if (!body?.title || !body?.category) {
+      return NextResponse.json(
+        { error: "title and category are required" },
+        { status: 400 }
+      );
+    }
     
     // Generate slug from title
     const slug = body.slug || body.title
@@ -64,6 +76,27 @@ export async function POST(request: NextRequest) {
       .replace(/-+/g, '-')
       .trim();
     
+    let createdById = body.createdById as string | undefined;
+
+    // Demo sessions may use synthetic ids (e.g. demo-admin@morakib.local).
+    if (!createdById || createdById.startsWith("demo-")) {
+      let demoUser = await db.user.findFirst({
+        where: { email: "demo@morakib.local" },
+      });
+
+      if (!demoUser) {
+        demoUser = await db.user.create({
+          data: {
+            email: "demo@morakib.local",
+            name: "Utilisateur Demo",
+            role: "ANALYST_JUNIOR",
+          },
+        });
+      }
+
+      createdById = demoUser.id;
+    }
+
     const sop = await db.sOP.create({
       data: {
         title: body.title,
@@ -74,7 +107,7 @@ export async function POST(request: NextRequest) {
         checklist: body.checklist || [],
         examples: body.examples || [],
         status: body.status || "DRAFT",
-        createdById: body.createdById,
+        createdById,
       },
       include: {
         createdBy: {

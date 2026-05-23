@@ -52,6 +52,9 @@ export function useStats() {
   return useQuery({
     queryKey: ["stats"],
     queryFn: fetchStats,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+    refetchOnWindowFocus: false,
+    refetchIntervalInBackground: false,
   });
 }

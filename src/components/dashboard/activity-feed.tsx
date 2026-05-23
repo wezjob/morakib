@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { formatRelativeTime } from "@/lib/utils";
 import { 
   AlertTriangle, 
@@ -9,34 +10,35 @@ import {
   ArrowUpRight 
 } from "lucide-react";
 
-const activities = [
+// Static offsets in milliseconds (time ago)
+const activityData = [
   {
     id: "1",
     type: "alert_resolved",
     user: "Marie L.",
     message: "a résolu une alerte SSH Brute Force",
-    timestamp: new Date(Date.now() - 10 * 60 * 1000),
+    offset: 10 * 60 * 1000, // 10 min ago
   },
   {
     id: "2",
     type: "alert_escalated",
     user: "Ahmed K.",
     message: "a escaladé une alerte critique",
-    timestamp: new Date(Date.now() - 25 * 60 * 1000),
+    offset: 25 * 60 * 1000, // 25 min ago
   },
   {
     id: "3",
     type: "sop_updated",
     user: "Jean D.",
     message: "a mis à jour SOP-NET-001",
-    timestamp: new Date(Date.now() - 45 * 60 * 1000),
+    offset: 45 * 60 * 1000, // 45 min ago
   },
   {
     id: "4",
     type: "user_joined",
     user: "Sophie M.",
     message: "a rejoint l'équipe SOC",
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
+    offset: 2 * 60 * 60 * 1000, // 2 hours ago
   },
 ];
 
@@ -49,6 +51,12 @@ const activityIcons: Record<string, React.ReactNode> = {
 };
 
 export function ActivityFeed() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900">
       <div className="border-b border-slate-800 px-6 py-4">
@@ -56,7 +64,7 @@ export function ActivityFeed() {
       </div>
 
       <div className="divide-y divide-slate-800">
-        {activities.map((activity) => (
+        {activityData.map((activity) => (
           <div
             key={activity.id}
             className="flex items-start gap-3 px-6 py-4"
@@ -72,8 +80,8 @@ export function ActivityFeed() {
                 <span className="font-medium text-white">{activity.user}</span>{" "}
                 {activity.message}
               </p>
-              <p className="text-xs text-slate-500 mt-1">
-                {formatRelativeTime(activity.timestamp)}
+              <p className="text-xs text-slate-500 mt-1" suppressHydrationWarning>
+                {mounted ? formatRelativeTime(new Date(Date.now() - activity.offset)) : "..."}
               </p>
             </div>
           </div>
